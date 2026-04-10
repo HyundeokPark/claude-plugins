@@ -1,7 +1,7 @@
 ---
 name: lake
 description: "PRD Lake - Session progress persistence system. Save work progress per task (spec/plan/context/journal) and resume instantly in the next session."
-argument-hint: "save|list|resume|done|search [args]"
+argument-hint: "save|list|resume|done|search|artifacts [args]"
 ---
 
 # /lake — PRD Lake Session Progress Persistence
@@ -23,6 +23,8 @@ Save work progress to `~/.claude/prd-lake/` per task, so you can instantly resto
       context.md                 ← Branch/files/decisions
       journal/                   ← Daily work log
         {yyyy-MM-dd}.md
+      artifacts/                 ← 산출물 인덱스
+        INDEX.md                 ← 산출물 목록 + 실제 경로
   done/                          ← Completed tasks
     {task-name}/...
   archive/                       ← Auto-cleaned after 30 days
@@ -53,6 +55,9 @@ Create a task folder and save spec/plan/context.
    - Proceed / Edit
 6. Write files
 7. Append to `journal/{today}.md`
+8. AskUserQuestion: "Any artifacts (files/directories) to record? (path or skip)"
+   - If path provided: create/update `artifacts/INDEX.md` with entry (path + auto-describe or prompt for description)
+   - If "skip" or empty: proceed without artifacts
 
 **spec.md template:**
 ```markdown
@@ -159,7 +164,11 @@ Load previous task context into current session.
 
    Recent Journal ({latest date}):
    {latest journal file content}
+
+   Artifacts:
+   {artifacts/INDEX.md content}
    ```
+   (Omit the Artifacts section if `artifacts/INDEX.md` does not exist)
 5. Update spec.md Updated timestamp
 
 ### `/lake done [name]`
@@ -208,9 +217,39 @@ Add today's journal entry to a task.
 3. AskUserQuestion for today's work
 4. Append to journal file
 
+### `/lake artifacts [name]`
+
+Show or add artifacts to a task.
+
+**Steps:**
+
+1. No argument → AskUserQuestion to select from inprogress list
+2. With argument → partial match in `~/.claude/prd-lake/inprogress/`
+3. If `artifacts/INDEX.md` doesn't exist → create it with the header template below
+4. Read and display current artifacts from INDEX.md:
+   ```
+   Artifacts for {task-name}:
+   {INDEX.md content}
+   ```
+5. AskUserQuestion: "Add new artifact? Enter path and description (or 'done')"
+   - If "done" or empty: finish
+   - If path+description provided: append a new row to the table in INDEX.md, then repeat step 5
+
+**artifacts/INDEX.md template:**
+```markdown
+# Artifacts
+
+| # | Path | Description | Added |
+|---|------|-------------|-------|
+| 1 | ~/project/terraform/ | Terraform IaC for OCI ARM | 2026-04-10 |
+```
+
+When appending rows, increment `#` automatically based on the current highest row number.
+
 ## Notes
 
 - Lake file total line limit: 200 lines (warn if exceeded)
 - Non-git directory save: fallback Project to dirname
 - Re-save same task name: update existing files (no new folder)
 - `/lake save` should be minimal friction — require minimum user input
+- Artifacts section in `/lake resume` is shown only when `artifacts/INDEX.md` exists

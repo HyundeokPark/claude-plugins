@@ -16,6 +16,7 @@ Save work progress to `~/.claude/prd-lake/` per task, so you can instantly resto
 
 ```
 ~/.claude/prd-lake/
+  index.json                     ← Task index (lake list reads ONLY this)
   inprogress/                    ← Active tasks
     {task-name}/
       spec.md                    ← What (requirements/background)
@@ -30,6 +31,42 @@ Save work progress to `~/.claude/prd-lake/` per task, so you can instantly resto
   archive/                       ← Auto-cleaned after 30 days
     {yyyy-MM}/...
 ```
+
+### index.json format
+
+```json
+[
+  {
+    "id": "ce119e",
+    "slug": "내집마련-로드맵",
+    "title": "내집마련 로드맵",
+    "project": "my-dashboard",
+    "status": "inprogress",
+    "created": "2026-04-10",
+    "updated": "2026-04-10"
+  }
+]
+```
+
+`id` is a 6-char SHA1 hash of the slug. Users can reference tasks by hash prefix (e.g. `ce11`).
+
+### lake-cli.js
+
+Located at `~/.claude/prd-lake/lake-cli.js`. This is the **performance layer** — all read-heavy commands MUST use it via Bash to avoid multiple tool calls.
+
+```
+node ~/.claude/prd-lake/lake-cli.js <command> [args]
+```
+
+| Command | Description |
+|---------|-------------|
+| `list` | Print task table from index.json |
+| `find <hash-or-slug>` | Find task, print JSON |
+| `resume <hash-or-slug>` | Print all files (spec+plan+context+journal+artifacts) |
+| `upsert '<json>'` | Add or update index entry |
+| `done <hash-or-slug>` | Move to done, update index |
+| `search <keyword>` | Grep across all lake files |
+| `rebuild` | Rebuild index.json from disk |
 
 ## Commands
 
@@ -54,8 +91,9 @@ Create a task folder and save spec/plan/context.
    - "Saving with this content. Anything to change?"
    - Proceed / Edit
 6. Write files
-7. Append to `journal/{today}.md`
-8. AskUserQuestion: "Any artifacts (files/directories) to record? (path or skip)"
+7. Run `node ~/.claude/prd-lake/lake-cli.js upsert '<json>'` to update index.json (with id, slug, title, project, status, created, updated)
+8. Append to `journal/{today}.md`
+9. AskUserQuestion: "Any artifacts (files/directories) to record? (path or skip)"
    - If path provided: create/update `artifacts/INDEX.md` with entry (path + auto-describe or prompt for description)
    - If "skip" or empty: proceed without artifacts
 
@@ -116,115 +154,88 @@ Create a task folder and save spec/plan/context.
 
 ### `/lake list`
 
-Show inprogress + done tasks.
+Show inprogress + done tasks. **Read 1회로 끝낸다.**
 
 **Steps:**
 
-1. List subdirectories under `~/.claude/prd-lake/inprogress/` (Glob)
-2. Read each directory's `spec.md` first line (title) and `context.md` Project
-3. Sort by Updated date from `spec.md`
-4. Mark items not updated for 7+ days as `(stale)`
-5. Show up to 5 recent items from `done/`
+1. Read `~/.claude/prd-lake/index.json` (Read tool — no Bash, no Glob)
+2. Parse JSON and format output directly
 
 **Output format:**
 ```
 In Progress ({N}):
-  1. {task-name} ({project}) — Updated {date}
-  2. {task-name} ({project}) — Updated {date} (stale)
+  1. {id} {title} ({project}) — Updated {date}
 
-Done (recent 5):
-  3. {task-name} ({project}) — Completed {date}
+Done ({N}):
+  2. {id} {title} ({project}) — Updated {date}
 ```
 
-### `/lake resume [name]`
+That's it. No Bash, no Glob.
 
-Load previous task context into current session.
+### `/lake resume [name-or-hash]`
+
+Load previous task context into current session. **Bash 1회로 끝낸다.**
 
 **Steps:**
 
 1. No argument:
-   - Show inprogress list via AskUserQuestion
-   - User selects
-2. With argument:
-   - Partial match in `~/.claude/prd-lake/inprogress/` (name substring)
-   - Multiple matches → AskUserQuestion to select
-3. Read spec.md, plan.md, context.md from selected task folder
-4. **Output as plain text** (visible to user):
-   ```
-   === Loading previous work: {task-name} ===
+   - Run `node ~/.claude/prd-lake/lake-cli.js list` to show options
+   - AskUserQuestion to select (hash or name)
+2. With argument (hash prefix or slug substring):
+   - Run: `node ~/.claude/prd-lake/lake-cli.js resume <arg>`
+   - This prints spec+plan+context+journal+artifacts in one shot
+3. Output the result as-is to the user
+4. Update spec.md Updated timestamp + run `lake-cli.js upsert` to sync index
 
-   Spec:
-   {spec.md content}
+### `/lake done [name-or-hash]`
 
-   Plan:
-   {plan.md content}
-
-   Context:
-   {context.md content}
-
-   Recent Journal ({latest date}):
-   {latest journal file content}
-
-   Artifacts:
-   {artifacts/INDEX.md content}
-   ```
-   (Omit the Artifacts section if `artifacts/INDEX.md` does not exist)
-5. Update spec.md Updated timestamp
-
-### `/lake done [name]`
-
-Mark task as completed.
+Mark task as completed. **Bash 1회로 끝낸다.**
 
 **Steps:**
 
-1. No argument → AskUserQuestion to select from inprogress list
-2. With argument → partial match
-3. Update `spec.md` Updated timestamp, change Status to done if present
-4. Move task folder `inprogress/` → `done/`:
-   ```bash
-   mv ~/.claude/prd-lake/inprogress/{task-name} ~/.claude/prd-lake/done/{task-name}
-   ```
-5. Print completion confirmation
+1. No argument:
+   - Run `node ~/.claude/prd-lake/lake-cli.js list` to show options
+   - AskUserQuestion to select
+2. With argument:
+   - Run: `node ~/.claude/prd-lake/lake-cli.js done <arg>`
+   - This moves the folder and updates index in one shot
+3. Print completion confirmation
 
 ### `/lake search "keyword"`
 
-Search lake files for keyword.
+Search lake files for keyword. **Bash 1회로 끝낸다.**
 
 **Steps:**
 
-1. Grep for keyword across `~/.claude/prd-lake/`
-2. Show matched file's task name + status (inprogress/done) + matched line
+1. Run: `node ~/.claude/prd-lake/lake-cli.js search <keyword>`
+2. Output the result as-is to the user
 
-**Output format:**
-```
-"{keyword}" search results:
-
-  [inprogress] task-name/spec.md:3
-    "matched line content"
-
-  [done] other-task/plan.md:5
-    "matched line content"
-```
-
-### `/lake journal [name]`
+### `/lake journal [name-or-hash]`
 
 Add today's journal entry to a task.
 
 **Steps:**
 
-1. No argument → select from inprogress list
-2. If `journal/{today}.md` exists → Edit, else → Write
-3. AskUserQuestion for today's work
-4. Append to journal file
+1. No argument:
+   - Run `node ~/.claude/prd-lake/lake-cli.js list` to show options
+   - AskUserQuestion to select
+2. With argument:
+   - Run `node ~/.claude/prd-lake/lake-cli.js find <arg>` to resolve task slug/path
+3. If `journal/{today}.md` exists → Edit, else → Write
+4. AskUserQuestion for today's work
+5. Append to journal file
 
-### `/lake artifacts [name]`
+### `/lake artifacts [name-or-hash]`
 
 Show or add artifacts to a task.
 
 **Steps:**
 
-1. No argument → AskUserQuestion to select from inprogress list
-2. With argument → partial match in `~/.claude/prd-lake/inprogress/`
+1. No argument:
+   - Run `node ~/.claude/prd-lake/lake-cli.js list` to show options
+   - AskUserQuestion to select
+2. With argument:
+   - Run `node ~/.claude/prd-lake/lake-cli.js find <arg>` to resolve task
 3. If `artifacts/INDEX.md` doesn't exist → create it with the header template below
 4. Read and display current artifacts from INDEX.md:
    ```

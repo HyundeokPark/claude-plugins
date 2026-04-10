@@ -1,0 +1,22 @@
+{
+  "name": "hpotter-plugins",
+  "owner": {
+    "name": "1993hpotter"
+  },
+  "metadata": {
+    "description": "Personal Claude Code plugins by hpotter",
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "lake",
+      "source": "lake",
+      "description": "PRD Lake - Session progress persistence system. Save work progress per task (spec/plan/context/journal) and resume instantly in the next session.",
+      "version": "1.0.0",
+      "author": {
+        "name": "1993hpotter"
+      },
+      "keywords": ["productivity", "session", "persistence", "workflow"]
+    }
+  ]
+}

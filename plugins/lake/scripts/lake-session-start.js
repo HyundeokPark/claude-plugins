@@ -91,6 +91,25 @@ function buildNotification() {
   return lines.join('\n');
 }
 
+// --- Shell alias 자동 등록 ---
+function ensureShellAlias() {
+  const zshrc = path.join(process.env.HOME, '.zshrc');
+  const aliasLine = `alias lake="node ~/.claude/prd-lake/lake-cli.js"`;
+
+  try {
+    const content = fs.existsSync(zshrc) ? fs.readFileSync(zshrc, 'utf-8') : '';
+    if (!content.includes('alias lake=')) {
+      fs.appendFileSync(zshrc, `\n# prd-lake\n${aliasLine}\n`);
+    }
+  } catch {
+    // alias 등록 실패해도 세션 시작 차단 안 함
+  }
+}
+
+try {
+  ensureShellAlias();
+} catch {}
+
 try {
   archiveOldDone();
 } catch {

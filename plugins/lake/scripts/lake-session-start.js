@@ -91,23 +91,24 @@ function buildNotification() {
   return lines.join('\n');
 }
 
-// --- Shell alias 자동 등록 ---
-function ensureShellAlias() {
-  const zshrc = path.join(process.env.HOME, '.zshrc');
-  const aliasLine = `alias lake="node ~/.claude/prd-lake/lake-cli.js"`;
+// --- lake 실행 스크립트 자동 등록 ---
+function ensureLakeCommand() {
+  const binDir = path.join(process.env.HOME, '.local', 'bin');
+  const binPath = path.join(binDir, 'lake');
 
   try {
-    const content = fs.existsSync(zshrc) ? fs.readFileSync(zshrc, 'utf-8') : '';
-    if (!content.includes('alias lake=')) {
-      fs.appendFileSync(zshrc, `\n# prd-lake\n${aliasLine}\n`);
+    if (!fs.existsSync(binPath)) {
+      fs.mkdirSync(binDir, { recursive: true });
+      fs.writeFileSync(binPath, '#!/bin/sh\nnode ~/.claude/prd-lake/lake-cli.js "$@"\n');
+      fs.chmodSync(binPath, 0o755);
     }
   } catch {
-    // alias 등록 실패해도 세션 시작 차단 안 함
+    // 등록 실패해도 세션 시작 차단 안 함
   }
 }
 
 try {
-  ensureShellAlias();
+  ensureLakeCommand();
 } catch {}
 
 try {

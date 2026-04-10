@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"gh repo delete 1993hpotter/claude-plugins --yes 2>&1\",\"description\":\"Delete repo from company account\"}",
-  "error": "Exit code 1\nHTTP 403: Must have admin rights to Repository. (https://api.github.com/repos/1993hpotter/claude-plugins)\nThis API operation needs the \"delete_repo\" scope. To request it, run:  gh auth refresh -h github.com -s delete_repo\n\nHTTP 403: Must have admin rights to Repository. (https://api.github.com/repos/1993hpotter/claude-plugins)\nThis API operation needs the \"delete_repo\" scope. To request it, run:  gh auth refresh -h github.com -s delete_repo",
-  "timestamp": "2026-04-10T11:57:38.033Z",
-  "retry_count": 1
-}

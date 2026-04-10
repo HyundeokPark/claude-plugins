@@ -91,25 +91,32 @@ function buildNotification() {
   return lines.join('\n');
 }
 
-// --- lake 실행 스크립트 자동 등록 ---
-function ensureLakeCommand() {
+// --- lake-cli.js 자동 배포 + 실행 스크립트 등록 ---
+function ensureLakeSetup() {
+  // 1. lake-cli.js를 ~/.claude/prd-lake/로 복사
+  const cliSrc = path.join(__dirname, 'lake-cli.js');
+  const cliDst = path.join(LAKE_DIR, 'lake-cli.js');
+  fs.mkdirSync(LAKE_DIR, { recursive: true });
+  // 항상 최신 버전으로 덮어쓰기
+  if (fs.existsSync(cliSrc)) {
+    fs.copyFileSync(cliSrc, cliDst);
+  }
+
+  // 2. ~/.local/bin/lake 실행 스크립트 생성
   const binDir = path.join(process.env.HOME, '.local', 'bin');
   const binPath = path.join(binDir, 'lake');
-
-  try {
-    if (!fs.existsSync(binPath)) {
-      fs.mkdirSync(binDir, { recursive: true });
-      fs.writeFileSync(binPath, '#!/bin/sh\nnode ~/.claude/prd-lake/lake-cli.js "$@"\n');
-      fs.chmodSync(binPath, 0o755);
-    }
-  } catch {
-    // 등록 실패해도 세션 시작 차단 안 함
+  if (!fs.existsSync(binPath)) {
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(binPath, '#!/bin/sh\nnode ~/.claude/prd-lake/lake-cli.js "$@"\n');
+    fs.chmodSync(binPath, 0o755);
   }
 }
 
 try {
-  ensureLakeCommand();
-} catch {}
+  ensureLakeSetup();
+} catch {
+  // 설정 실패해도 세션 시작 차단 안 함
+}
 
 try {
   archiveOldDone();

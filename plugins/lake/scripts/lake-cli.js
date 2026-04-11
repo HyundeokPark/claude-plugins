@@ -3,13 +3,18 @@
  * lake-cli.js — PRD Lake fast index CLI
  *
  * Usage:
- *   node lake-cli.js list                   # Print task table
+ *   node lake-cli.js list                   # Print task table (with epic tree)
  *   node lake-cli.js find <hash-prefix>     # Find task by hash prefix, print slug
  *   node lake-cli.js resume <hash-or-slug>  # Print all files for a task (spec+plan+context+journal+artifacts)
  *   node lake-cli.js upsert <json-string>   # Add or update index entry
  *   node lake-cli.js done <hash-or-slug>    # Move task to done, update index
  *   node lake-cli.js search <keyword>       # Search across all lake files
  *   node lake-cli.js rebuild                # Rebuild index.json from disk
+ *   node lake-cli.js link <parent> <child>  # Link parent-child epic
+ *   node lake-cli.js unlink <parent> <child># Unlink parent-child epic
+ *   node lake-cli.js tree [hash-or-slug]    # Show epic tree
+ *   node lake-cli.js relate <task1> <task2> # Bidirectional relates-to link
+ *   node lake-cli.js unrelate <task1> <task2># Remove relates-to link
  */
 
 const fs = require('fs');
@@ -87,16 +92,42 @@ function cmdList() {
     .sort((a, b) => b.updated.localeCompare(a.updated))
     .slice(0, 5);
 
+  // Separate top-level (no parent) and children
+  const topLevel = inprog.filter(t => !t.parent);
+  const childMap = {};
+  inprog.filter(t => t.parent).forEach(t => {
+    if (!childMap[t.parent]) childMap[t.parent] = [];
+    childMap[t.parent].push(t);
+  });
+
   console.log(`In Progress (${inprog.length}):`);
-  inprog.forEach((t, i) => {
+  let num = 1;
+  topLevel.forEach(t => {
     const stale = daysSince(t.updated) >= 7 ? ' (stale)' : '';
-    console.log(`  ${i + 1}. [${t.id}] ${t.title} (${t.project}) — Updated ${t.updated}${stale}`);
+    const tags = t.tags ? ` ${t.tags.map(x => '#' + x).join(' ')}` : '';
+    console.log(`  ${num}. [${t.id}] ${t.title} (${t.project}) — Updated ${t.updated}${stale}${tags}`);
+    num++;
+    const children = (childMap[t.id] || []).sort((a, b) => b.updated.localeCompare(a.updated));
+    children.forEach((c, ci) => {
+      const cstale = daysSince(c.updated) >= 7 ? ' (stale)' : '';
+      const ctags = c.tags ? ` ${c.tags.map(x => '#' + x).join(' ')}` : '';
+      const prefix = ci === children.length - 1 ? '└─' : '├─';
+      console.log(`     ${prefix} [${c.id}] ${c.title} (${c.project}) — Updated ${c.updated}${cstale}${ctags}`);
+    });
+  });
+
+  // Show orphaned children (parent not found) as top-level
+  const allParentIds = new Set(topLevel.map(t => t.id));
+  inprog.filter(t => t.parent && !allParentIds.has(t.parent)).forEach(t => {
+    const stale = daysSince(t.updated) >= 7 ? ' (stale)' : '';
+    console.log(`  ${num}. [${t.id}] ${t.title} (${t.project}) — Updated ${t.updated}${stale} (parent: ${t.parent})`);
+    num++;
   });
 
   if (done.length > 0) {
     console.log(`\nDone (recent ${done.length}):`);
     done.forEach((t, i) => {
-      console.log(`  ${inprog.length + i + 1}. [${t.id}] ${t.title} (${t.project}) — Completed ${t.updated}`);
+      console.log(`  ${num + i}. [${t.id}] ${t.title} (${t.project}) — Completed ${t.updated}`);
     });
   } else {
     console.log('\nDone: (none)');
@@ -116,6 +147,34 @@ function cmdResume(query) {
   const dir = taskDir(task);
 
   console.log(`=== Loading previous work: ${task.title} [${task.id}] ===\n`);
+
+  // Show epic links
+  if (task.parent) {
+    const parent = index.find(t => t.id === task.parent);
+    if (parent) console.log(`📋 Parent: [${parent.id}] ${parent.title}\n`);
+  }
+  if (task.children && task.children.length > 0) {
+    console.log('📋 Children:');
+    task.children.forEach(cid => {
+      const child = index.find(t => t.id === cid);
+      if (child) {
+        const status = child.status === 'done' ? ' ✅' : '';
+        console.log(`  └─ [${child.id}] ${child.title}${status}`);
+      }
+    });
+    console.log();
+  }
+  if (task.relates && task.relates.length > 0) {
+    console.log('🔗 Relates to:');
+    task.relates.forEach(rid => {
+      const rel = index.find(t => t.id === rid);
+      if (rel) console.log(`  ↔ [${rel.id}] ${rel.title}`);
+    });
+    console.log();
+  }
+  if (task.tags && task.tags.length > 0) {
+    console.log(`🏷️  Tags: ${task.tags.map(t => `#${t}`).join(' ')}\n`);
+  }
 
   const spec = readFileSafe(path.join(dir, 'spec.md'));
   if (spec) { console.log('--- Spec ---'); console.log(spec); }
@@ -189,7 +248,20 @@ function cmdDone(query) {
 }
 
 function cmdSearch(keyword) {
+  const index = readIndex();
   const results = [];
+
+  // Search by tag first
+  const tagQuery = keyword.replace(/^#/, '');
+  const tagMatches = index.filter(t => t.tags && t.tags.some(tag => tag.toLowerCase().includes(tagQuery.toLowerCase())));
+  if (tagMatches.length > 0) {
+    console.log(`Tag matches for "#${tagQuery}":\n`);
+    tagMatches.forEach(t => {
+      console.log(`  [${t.status}] [${t.id}] ${t.title} (${t.project}) — ${t.tags.map(x => '#' + x).join(' ')}\n`);
+    });
+  }
+
+  // Search file contents
   const searchDir = (base, status) => {
     if (!fs.existsSync(base)) return;
     for (const slug of fs.readdirSync(base)) {
@@ -209,15 +281,176 @@ function cmdSearch(keyword) {
   searchDir(INPROGRESS_DIR, 'inprogress');
   searchDir(DONE_DIR, 'done');
 
-  if (results.length === 0) {
+  if (results.length > 0) {
+    console.log(`"${keyword}" file matches:\n`);
+    results.forEach(r => {
+      console.log(`  [${r.status}] ${r.slug}/${r.file}:${r.line}`);
+      console.log(`    "${r.text}"\n`);
+    });
+  }
+
+  if (tagMatches.length === 0 && results.length === 0) {
     console.log(`No results for "${keyword}"`);
+  }
+}
+
+function cmdLink(parentQuery, childQuery) {
+  const index = readIndex();
+  const parent = findTask(index, parentQuery);
+  const child = findTask(index, childQuery);
+
+  if (parent.id === child.id) {
+    console.error('Cannot link a task to itself');
+    process.exit(1);
+  }
+
+  // Set child's parent
+  const childIdx = index.findIndex(t => t.slug === child.slug);
+  index[childIdx].parent = parent.id;
+
+  // Add to parent's children
+  const parentIdx = index.findIndex(t => t.slug === parent.slug);
+  if (!index[parentIdx].children) index[parentIdx].children = [];
+  if (!index[parentIdx].children.includes(child.id)) {
+    index[parentIdx].children.push(child.id);
+  }
+
+  writeIndex(index);
+  console.log(`Linked: [${parent.id}] ${parent.title} ← [${child.id}] ${child.title}`);
+}
+
+function cmdUnlink(parentQuery, childQuery) {
+  const index = readIndex();
+  const parent = findTask(index, parentQuery);
+  const child = findTask(index, childQuery);
+
+  // Remove child's parent
+  const childIdx = index.findIndex(t => t.slug === child.slug);
+  delete index[childIdx].parent;
+
+  // Remove from parent's children
+  const parentIdx = index.findIndex(t => t.slug === parent.slug);
+  if (index[parentIdx].children) {
+    index[parentIdx].children = index[parentIdx].children.filter(id => id !== child.id);
+    if (index[parentIdx].children.length === 0) delete index[parentIdx].children;
+  }
+
+  writeIndex(index);
+  console.log(`Unlinked: [${parent.id}] ${parent.title} ✕ [${child.id}] ${child.title}`);
+}
+
+function cmdTree(query) {
+  const index = readIndex();
+
+  if (!query) {
+    // Show all trees (top-level parents with children)
+    const parents = index.filter(t => t.children && t.children.length > 0);
+    if (parents.length === 0) {
+      console.log('No epic trees found.');
+      return;
+    }
+    parents.forEach(p => printTree(index, p, 0));
     return;
   }
-  console.log(`"${keyword}" search results:\n`);
-  results.forEach(r => {
-    console.log(`  [${r.status}] ${r.slug}/${r.file}:${r.line}`);
-    console.log(`    "${r.text}"\n`);
+
+  const task = findTask(index, query);
+  // Walk up to root
+  let root = task;
+  while (root.parent) {
+    root = index.find(t => t.id === root.parent) || root;
+    if (!root.parent || root.id === task.id) break;
+  }
+  printTree(index, root, 0);
+}
+
+function printTree(index, task, depth) {
+  const indent = '  '.repeat(depth);
+  const prefix = depth === 0 ? '📋' : '  └─';
+  const stale = daysSince(task.updated) >= 7 ? ' (stale)' : '';
+  const status = task.status === 'done' ? ' ✅' : '';
+  console.log(`${indent}${prefix} [${task.id}] ${task.title} (${task.project})${status}${stale}`);
+
+  if (task.children) {
+    task.children.forEach(childId => {
+      const child = index.find(t => t.id === childId);
+      if (child) printTree(index, child, depth + 1);
+    });
+  }
+}
+
+function cmdRelate(query1, query2) {
+  const index = readIndex();
+  const task1 = findTask(index, query1);
+  const task2 = findTask(index, query2);
+
+  if (task1.id === task2.id) {
+    console.error('Cannot relate a task to itself');
+    process.exit(1);
+  }
+
+  const idx1 = index.findIndex(t => t.slug === task1.slug);
+  const idx2 = index.findIndex(t => t.slug === task2.slug);
+
+  if (!index[idx1].relates) index[idx1].relates = [];
+  if (!index[idx2].relates) index[idx2].relates = [];
+
+  if (!index[idx1].relates.includes(task2.id)) index[idx1].relates.push(task2.id);
+  if (!index[idx2].relates.includes(task1.id)) index[idx2].relates.push(task1.id);
+
+  writeIndex(index);
+  console.log(`Related: [${task1.id}] ${task1.title} ↔ [${task2.id}] ${task2.title}`);
+}
+
+function cmdUnrelate(query1, query2) {
+  const index = readIndex();
+  const task1 = findTask(index, query1);
+  const task2 = findTask(index, query2);
+
+  const idx1 = index.findIndex(t => t.slug === task1.slug);
+  const idx2 = index.findIndex(t => t.slug === task2.slug);
+
+  if (index[idx1].relates) {
+    index[idx1].relates = index[idx1].relates.filter(id => id !== task2.id);
+    if (index[idx1].relates.length === 0) delete index[idx1].relates;
+  }
+  if (index[idx2].relates) {
+    index[idx2].relates = index[idx2].relates.filter(id => id !== task1.id);
+    if (index[idx2].relates.length === 0) delete index[idx2].relates;
+  }
+
+  writeIndex(index);
+  console.log(`Unrelated: [${task1.id}] ${task1.title} ✕ [${task2.id}] ${task2.title}`);
+}
+
+function cmdTag(query, ...tags) {
+  const index = readIndex();
+  const task = findTask(index, query);
+  const idx = index.findIndex(t => t.slug === task.slug);
+
+  if (!index[idx].tags) index[idx].tags = [];
+  tags.forEach(tag => {
+    const clean = tag.replace(/^#/, '');
+    if (!index[idx].tags.includes(clean)) index[idx].tags.push(clean);
   });
+
+  writeIndex(index);
+  console.log(`Tagged: [${task.id}] ${task.title} → ${index[idx].tags.map(t => '#' + t).join(' ')}`);
+}
+
+function cmdUntag(query, ...tags) {
+  const index = readIndex();
+  const task = findTask(index, query);
+  const idx = index.findIndex(t => t.slug === task.slug);
+
+  if (index[idx].tags) {
+    const remove = tags.map(t => t.replace(/^#/, ''));
+    index[idx].tags = index[idx].tags.filter(t => !remove.includes(t));
+    if (index[idx].tags.length === 0) delete index[idx].tags;
+  }
+
+  writeIndex(index);
+  const remaining = index[idx].tags ? index[idx].tags.map(t => '#' + t).join(' ') : '(none)';
+  console.log(`Untagged: [${task.id}] ${task.title} → ${remaining}`);
 }
 
 function cmdRebuild() {
@@ -269,6 +502,13 @@ switch (cmd) {
   case 'done':    cmdDone(args[0]); break;
   case 'search':  cmdSearch(args.join(' ')); break;
   case 'rebuild': cmdRebuild(); break;
+  case 'link':    cmdLink(args[0], args[1]); break;
+  case 'unlink':  cmdUnlink(args[0], args[1]); break;
+  case 'tree':    cmdTree(args[0]); break;
+  case 'relate':  cmdRelate(args[0], args[1]); break;
+  case 'unrelate': cmdUnrelate(args[0], args[1]); break;
+  case 'tag':     cmdTag(args[0], ...args.slice(1)); break;
+  case 'untag':   cmdUntag(args[0], ...args.slice(1)); break;
   default:
     console.log('Usage: lake-cli.js <list|find|resume|upsert|done|search|rebuild> [args]');
     process.exit(1);

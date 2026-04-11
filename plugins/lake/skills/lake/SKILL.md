@@ -167,23 +167,14 @@ Create a task folder and save spec/plan/context.
 
 ### `/lake list`
 
-Show inprogress + done tasks. **Read 1회로 끝낸다.**
+Show inprogress + done tasks. **Bash 1회로 끝낸다.**
 
 **Steps:**
 
-1. Read `~/.claude/prd-lake/index.json` (Read tool — no Bash, no Glob)
-2. Parse JSON and format output directly
+1. Run: `node ~/.claude/prd-lake/lake-cli.js list`
+2. Output the result as-is to the user (do NOT reformat)
 
-**Output format:**
-```
-In Progress ({N}):
-  1. {id} {title} ({project}) — Updated {date}
-
-Done ({N}):
-  2. {id} {title} ({project}) — Updated {date}
-```
-
-That's it. No Bash, no Glob.
+That's it. No Read, no Glob. CLI output is the final output.
 
 ### `/lake resume [name-or-hash]`
 

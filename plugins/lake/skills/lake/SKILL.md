@@ -1,7 +1,7 @@
 ---
 name: lake
 description: "PRD Lake - Session progress persistence system. Save work progress per task (spec/plan/context/journal) and resume instantly in the next session."
-argument-hint: "save|list|resume|done|search|artifacts|link|unlink|tree|relate|unrelate|tag|untag [args]"
+argument-hint: "save|list|resume|done|search|artifacts|link|unlink|tree|relate|unrelate|tag|untag|block|unblock [args]"
 ---
 
 # /lake — PRD Lake Session Progress Persistence
@@ -50,7 +50,7 @@ Save work progress to `~/.claude/prd-lake/` per task, so you can instantly resto
 ]
 ```
 
-`parent` and `children` are optional. `parent` is the id of the parent epic. `children` is an array of child task ids. `relates` is an array of bidirectionally linked task ids. `tags` is an array of tag strings (without `#` prefix).
+`parent` and `children` are optional. `parent` is the id of the parent epic. `children` is an array of child task ids. `relates` is an array of bidirectionally linked task ids. `tags` is an array of tag strings (without `#` prefix). `blocked_by` is an array of blocker task ids. `blocks` is an array of task ids this task blocks.
 
 `id` is a 6-char SHA1 hash of the slug. Users can reference tasks by hash prefix (e.g. `ce11`).
 
@@ -78,6 +78,8 @@ node ~/.claude/prd-lake/lake-cli.js <command> [args]
 | `unrelate <task1> <task2>` | Remove relates-to link |
 | `tag <task> <tag1> [tag2...]` | Add tags to a task |
 | `untag <task> <tag1> [tag2...]` | Remove tags from a task |
+| `block <blocked> <blocker>` | Mark task as blocked by another |
+| `unblock <blocked> <blocker>` | Remove blocked-by link |
 
 ## Commands
 
@@ -355,6 +357,34 @@ Remove tags from a task.
 **Steps:**
 
 1. Run: `node ~/.claude/prd-lake/lake-cli.js untag <task> <tag1> [tag2...]`
+2. Print confirmation
+
+### `/lake block <blocked> <blocker>`
+
+Mark a task as blocked by another (dependency/선행 조건). The blocked task cannot proceed until the blocker is done.
+
+**Steps:**
+
+1. Run: `node ~/.claude/prd-lake/lake-cli.js block <blocked> <blocker>`
+2. Print confirmation
+
+**Example:**
+```
+/lake block 9e2963 2f3d89
+→ Blocked: [9e2963] n8n 자동화 허브 ──blocked by──→ [2f3d89] Oracle K3s 인프라
+```
+
+Resume output shows both sides:
+- Blocked task: `🚫 Blocked by: [2f3d89] Oracle K3s 인프라`
+- Blocker task: `⏳ Blocks: [9e2963] n8n 자동화 허브`
+
+### `/lake unblock <blocked> <blocker>`
+
+Remove blocked-by dependency link.
+
+**Steps:**
+
+1. Run: `node ~/.claude/prd-lake/lake-cli.js unblock <blocked> <blocker>`
 2. Print confirmation
 
 ### `/lake save "title"` with `--parent`

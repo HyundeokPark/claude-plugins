@@ -15,6 +15,8 @@
  *   node lake-cli.js tree [hash-or-slug]    # Show epic tree
  *   node lake-cli.js relate <task1> <task2> # Bidirectional relates-to link
  *   node lake-cli.js unrelate <task1> <task2># Remove relates-to link
+ *   node lake-cli.js block <blocked> <blocker># Mark task as blocked by another
+ *   node lake-cli.js unblock <blocked> <blocker># Remove blocked-by link
  */
 
 const fs = require('fs');
@@ -169,6 +171,25 @@ function cmdResume(query) {
     task.relates.forEach(rid => {
       const rel = index.find(t => t.id === rid);
       if (rel) console.log(`  ↔ [${rel.id}] ${rel.title}`);
+    });
+    console.log();
+  }
+  if (task.blocked_by && task.blocked_by.length > 0) {
+    console.log('🚫 Blocked by:');
+    task.blocked_by.forEach(bid => {
+      const b = index.find(t => t.id === bid);
+      if (b) {
+        const done = b.status === 'done' ? ' ✅' : '';
+        console.log(`  ← [${b.id}] ${b.title}${done}`);
+      }
+    });
+    console.log();
+  }
+  if (task.blocks && task.blocks.length > 0) {
+    console.log('⏳ Blocks:');
+    task.blocks.forEach(bid => {
+      const b = index.find(t => t.id === bid);
+      if (b) console.log(`  → [${b.id}] ${b.title}`);
     });
     console.log();
   }
@@ -422,6 +443,50 @@ function cmdUnrelate(query1, query2) {
   console.log(`Unrelated: [${task1.id}] ${task1.title} ✕ [${task2.id}] ${task2.title}`);
 }
 
+function cmdBlock(blockedQuery, blockerQuery) {
+  const index = readIndex();
+  const blocked = findTask(index, blockedQuery);
+  const blocker = findTask(index, blockerQuery);
+
+  if (blocked.id === blocker.id) {
+    console.error('Cannot block a task by itself');
+    process.exit(1);
+  }
+
+  const blockedIdx = index.findIndex(t => t.slug === blocked.slug);
+  const blockerIdx = index.findIndex(t => t.slug === blocker.slug);
+
+  if (!index[blockedIdx].blocked_by) index[blockedIdx].blocked_by = [];
+  if (!index[blockerIdx].blocks) index[blockerIdx].blocks = [];
+
+  if (!index[blockedIdx].blocked_by.includes(blocker.id)) index[blockedIdx].blocked_by.push(blocker.id);
+  if (!index[blockerIdx].blocks.includes(blocked.id)) index[blockerIdx].blocks.push(blocked.id);
+
+  writeIndex(index);
+  console.log(`Blocked: [${blocked.id}] ${blocked.title} ──blocked by──→ [${blocker.id}] ${blocker.title}`);
+}
+
+function cmdUnblock(blockedQuery, blockerQuery) {
+  const index = readIndex();
+  const blocked = findTask(index, blockedQuery);
+  const blocker = findTask(index, blockerQuery);
+
+  const blockedIdx = index.findIndex(t => t.slug === blocked.slug);
+  const blockerIdx = index.findIndex(t => t.slug === blocker.slug);
+
+  if (index[blockedIdx].blocked_by) {
+    index[blockedIdx].blocked_by = index[blockedIdx].blocked_by.filter(id => id !== blocker.id);
+    if (index[blockedIdx].blocked_by.length === 0) delete index[blockedIdx].blocked_by;
+  }
+  if (index[blockerIdx].blocks) {
+    index[blockerIdx].blocks = index[blockerIdx].blocks.filter(id => id !== blocked.id);
+    if (index[blockerIdx].blocks.length === 0) delete index[blockerIdx].blocks;
+  }
+
+  writeIndex(index);
+  console.log(`Unblocked: [${blocked.id}] ${blocked.title} ✕ [${blocker.id}] ${blocker.title}`);
+}
+
 function cmdTag(query, ...tags) {
   const index = readIndex();
   const task = findTask(index, query);
@@ -509,6 +574,8 @@ switch (cmd) {
   case 'unrelate': cmdUnrelate(args[0], args[1]); break;
   case 'tag':     cmdTag(args[0], ...args.slice(1)); break;
   case 'untag':   cmdUntag(args[0], ...args.slice(1)); break;
+  case 'block':   cmdBlock(args[0], args[1]); break;
+  case 'unblock': cmdUnblock(args[0], args[1]); break;
   default:
     console.log('Usage: lake-cli.js <list|find|resume|upsert|done|search|rebuild> [args]');
     process.exit(1);

@@ -62,6 +62,8 @@ Located at `~/.claude/prd-lake/lake-cli.js`. This is the **performance layer** �
 node ~/.claude/prd-lake/lake-cli.js <command> [args]
 ```
 
+> **IMPORTANT — visibility rule:** Bash tool stdout is NOT rendered to the user in this environment. For every `lake-cli.js` invocation whose output the user needs to see (`list`, `resume`, `search`, `tree`, `find`, and confirmation messages from `done`/`link`/`tag`/`block`/etc.), the assistant MUST copy the captured stdout verbatim into a fenced code block in the final text reply. Do not summarize or paraphrase. If stdout is empty, say so explicitly.
+
 | Command | Description |
 |---------|-------------|
 | `list` | Print task table from index.json |
@@ -172,9 +174,9 @@ Show inprogress + done tasks. **Bash 1회로 끝낸다.**
 **Steps:**
 
 1. Run: `node ~/.claude/prd-lake/lake-cli.js list`
-2. Output the result as-is to the user (do NOT reformat)
+2. **Echo the captured stdout verbatim inside a fenced code block in your text reply** — Bash tool output is NOT visible to the user, so the assistant MUST paste it back as a text message. Do not reformat, do not summarize, do not omit rows.
 
-That's it. No Read, no Glob. CLI output is the final output.
+That's it. No Read, no Glob. CLI stdout → code block in text reply.
 
 ### `/lake resume [name-or-hash]`
 
@@ -188,7 +190,7 @@ Load previous task context into current session. **Bash 1회로 끝낸다.**
 2. With argument (hash prefix or slug substring):
    - Run: `node ~/.claude/prd-lake/lake-cli.js resume <arg>`
    - This prints spec+plan+context+journal+artifacts in one shot
-3. Output the result as-is to the user
+3. **Echo the captured stdout verbatim in your text reply** (inside a fenced code block) — Bash output is not visible to the user.
 4. Update spec.md Updated timestamp + run `lake-cli.js upsert` to sync index
 
 ### `/lake done [name-or-hash]`
@@ -212,7 +214,7 @@ Search lake files for keyword. **Bash 1회로 끝낸다.**
 **Steps:**
 
 1. Run: `node ~/.claude/prd-lake/lake-cli.js search <keyword>`
-2. Output the result as-is to the user
+2. **Echo the captured stdout verbatim in your text reply** (inside a fenced code block) — Bash output is not visible to the user.
 
 ### `/lake journal [name-or-hash]`
 

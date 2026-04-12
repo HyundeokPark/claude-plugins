@@ -45,6 +45,16 @@ function writeIndex(index) {
 }
 
 function findTask(index, query) {
+  // Numeric query → position in the same order as cmdList (inprogress by updated desc, top-level then children)
+  if (/^\d+$/.test(query)) {
+    const n = parseInt(query, 10);
+    const inprog = index.filter(t => t.status === 'inprogress')
+      .sort((a, b) => b.updated.localeCompare(a.updated));
+    const topLevel = inprog.filter(t => !t.parent);
+    if (n >= 1 && n <= topLevel.length) return topLevel[n - 1];
+    console.error(`번호 ${query} 범위 밖 (1-${topLevel.length})`);
+    process.exit(1);
+  }
   // Try hash prefix first
   let matches = index.filter(t => t.id.startsWith(query));
   if (matches.length === 1) return matches[0];
@@ -86,54 +96,121 @@ function readFileSafe(p) {
 
 // --- Commands ---
 
+function displayWidth(s) {
+  let w = 0;
+  for (const ch of String(s)) {
+    const c = ch.codePointAt(0);
+    if (
+      (c >= 0x1100 && c <= 0x115F) ||
+      (c >= 0x2E80 && c <= 0x303E) ||
+      (c >= 0x3041 && c <= 0x33FF) ||
+      (c >= 0x3400 && c <= 0x4DBF) ||
+      (c >= 0x4E00 && c <= 0x9FFF) ||
+      (c >= 0xA000 && c <= 0xA4CF) ||
+      (c >= 0xAC00 && c <= 0xD7A3) ||
+      (c >= 0xF900 && c <= 0xFAFF) ||
+      (c >= 0xFE30 && c <= 0xFE4F) ||
+      (c >= 0xFF00 && c <= 0xFF60) ||
+      (c >= 0xFFE0 && c <= 0xFFE6)
+    ) w += 2;
+    else w += 1;
+  }
+  return w;
+}
+
+function padDisplay(s, width) {
+  const d = displayWidth(s);
+  return s + ' '.repeat(Math.max(0, width - d));
+}
+
+function relDate(ymd) {
+  const d = daysSince(ymd);
+  if (d <= 0) return 'today';
+  if (d === 1) return 'yesterday';
+  if (d < 7) return `${d}d ago`;
+  if (d < 30) return `${Math.floor(d / 7)}w ago`;
+  if (d < 365) return `${Math.floor(d / 30)}mo ago`;
+  return `${Math.floor(d / 365)}y ago`;
+}
+
 function cmdList() {
   const index = readIndex();
   const inprog = index.filter(t => t.status === 'inprogress')
     .sort((a, b) => b.updated.localeCompare(a.updated));
   const done = index.filter(t => t.status === 'done')
     .sort((a, b) => b.updated.localeCompare(a.updated))
-    .slice(0, 5);
+    .slice(0, 3);
 
-  // Separate top-level (no parent) and children
   const topLevel = inprog.filter(t => !t.parent);
   const childMap = {};
   inprog.filter(t => t.parent).forEach(t => {
     if (!childMap[t.parent]) childMap[t.parent] = [];
     childMap[t.parent].push(t);
   });
+  const parentIds = new Set(topLevel.map(t => t.id));
+  const orphans = inprog.filter(t => t.parent && !parentIds.has(t.parent));
 
-  console.log(`In Progress (${inprog.length}):`);
-  let num = 1;
+  // Build flat rows with all columns: [num, hash, title, project, date]
+  let pos = 0;
+  const rows = [];
   topLevel.forEach(t => {
-    const stale = daysSince(t.updated) >= 7 ? ' (stale)' : '';
-    const tags = t.tags ? ` ${t.tags.map(x => '#' + x).join(' ')}` : '';
-    console.log(`  ${num}. [${t.id}] ${t.title} (${t.project}) — Updated ${t.updated}${stale}${tags}`);
-    num++;
+    pos++;
+    const tagStr = t.tags && t.tags.length ? '  ' + t.tags.map(x => '#' + x).join(' ') : '';
+    rows.push([String(pos), t.id, t.title + tagStr, t.project, t.updated]);
     const children = (childMap[t.id] || []).sort((a, b) => b.updated.localeCompare(a.updated));
-    children.forEach((c, ci) => {
-      const cstale = daysSince(c.updated) >= 7 ? ' (stale)' : '';
-      const ctags = c.tags ? ` ${c.tags.map(x => '#' + x).join(' ')}` : '';
-      const prefix = ci === children.length - 1 ? '└─' : '├─';
-      console.log(`     ${prefix} [${c.id}] ${c.title} (${c.project}) — Updated ${c.updated}${cstale}${ctags}`);
+    children.forEach(c => {
+      const ctagStr = c.tags && c.tags.length ? '  ' + c.tags.map(x => '#' + x).join(' ') : '';
+      rows.push(['', c.id, '  └ ' + c.title + ctagStr, c.project, c.updated]);
     });
   });
-
-  // Show orphaned children (parent not found) as top-level
-  const allParentIds = new Set(topLevel.map(t => t.id));
-  inprog.filter(t => t.parent && !allParentIds.has(t.parent)).forEach(t => {
-    const stale = daysSince(t.updated) >= 7 ? ' (stale)' : '';
-    console.log(`  ${num}. [${t.id}] ${t.title} (${t.project}) — Updated ${t.updated}${stale} (parent: ${t.parent})`);
-    num++;
+  orphans.forEach(t => {
+    pos++;
+    const tagStr = t.tags && t.tags.length ? '  ' + t.tags.map(x => '#' + x).join(' ') : '';
+    rows.push([String(pos), t.id, t.title + tagStr + ' ⚠', t.project, t.updated]);
   });
 
-  if (done.length > 0) {
-    console.log(`\nDone (recent ${done.length}):`);
-    done.forEach((t, i) => {
-      console.log(`  ${num + i}. [${t.id}] ${t.title} (${t.project}) — Completed ${t.updated}`);
+  const doneRows = done.map(t => ['✓', t.id, t.title, t.project, t.updated]);
+
+  const header = ['#', 'hash', '제목', '프로젝트', '날짜'];
+
+  const renderTable = (ttl, tbl) => {
+    if (tbl.length === 0) return;
+    const all = [header, ...tbl];
+    const cols = header.length;
+    const colW = [];
+    for (let c = 0; c < cols; c++) {
+      colW.push(Math.max(...all.map(r => displayWidth(r[c]))));
+    }
+    const total = colW.reduce((s, w) => s + w + 3, 0) + 1; // each col: ' ' + content + ' ' + '│' ; plus opening '│'
+
+    const hLine = (l, m, r) => l + colW.map(w => '─'.repeat(w + 2)).join(m) + r;
+    const top = '┌' + '─'.repeat(total - 2) + '┐';
+    const headBot = hLine('├', '┬', '┤');
+    const rowSep = hLine('├', '┼', '┤');
+    const bot = hLine('└', '┴', '┘');
+
+    const titleLine = '│ ' + padDisplay(`${ttl}  (${tbl.length})`, total - 4) + ' │';
+    const headRow = '│' + header.map((h, i) => ' ' + padDisplay(h, colW[i]) + ' ').join('│') + '│';
+    const dataRow = (r) => '│' + r.map((v, i) => ' ' + padDisplay(v, colW[i]) + ' ').join('│') + '│';
+
+    console.log(top);
+    console.log(titleLine);
+    console.log(headBot);
+    console.log(headRow);
+    console.log(rowSep);
+    tbl.forEach((r, i) => {
+      console.log(dataRow(r));
+      if (i < tbl.length - 1) console.log(rowSep);
     });
-  } else {
-    console.log('\nDone: (none)');
-  }
+    console.log(bot);
+  };
+
+  console.log('');
+  renderTable('진행중', rows);
+  if (doneRows.length) { console.log(''); renderTable('끝냄', doneRows); }
+  console.log('');
+  console.log(`  진행중 ${inprog.length} · 완료 ${index.filter(x => x.status === 'done').length}  ·  lake resume <번호|hash|제목>`);
+  console.log('');
 }
 
 function cmdFind(query) {

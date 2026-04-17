@@ -1,0 +1,38 @@
+In Progress (30):
+  1. [457cda] Small Task Fixture (nestads-backend) — Updated 2026-04-16
+  2. [8a7400] Oversized Blockers Fixture (nestads-backend) — Updated 2026-04-16
+  3. [531768] Ad Click Deduplication via Kafka (nestads-response-stream) — Updated 2026-04-16
+  4. [3120d9] Campaign List API v2 (nestads-backend) — Updated 2026-04-16
+  5. [7e941d] Session Start Hook Refactor (nestads-local) — Updated 2026-04-16
+  6. [f99e1a] Lake Token Diet v1 (nestads-local) — Updated 2026-04-16
+  7. [e515a0] Medium Task Fixture (nestads-frontend) — Updated 2026-04-15
+  8. [5a69f3] Label Stream Avro Schema Upgrade (nestads-label-stream) — Updated 2026-04-15
+  9. [93c709] Deliverer Reactive Redis Migration (nestads-deliverer) — Updated 2026-04-15
+  10. [3b0a39] Status Manager State Machine (nestads-status-manager) — Updated 2026-04-15
+  11. [026585] Large Task Fixture (nestads-statistics-stream) — Updated 2026-04-14
+  12. [c04e89] Log Receiver HTTP→Kafka Pipeline (nestads-log-receiver) — Updated 2026-04-14
+  13. [84351e] Airflow DAG for Statistics Backfill (nestads-airflow-dags) — Updated 2026-04-14
+  14. [2e9509] Android SDK Click Tracking API (nestads-sdk-android) — Updated 2026-04-14
+  15. [4a96cd] iOS SDK Impression Batching (nestads-sdk-ios) — Updated 2026-04-14
+  16. [57c804] Frontend Campaign Filter Panel (nestads-frontend) — Updated 2026-04-14
+  17. [4ae731] Backend JWT Key Rotation (nestads-backend) — Updated 2026-04-14
+  18. [bf328c] Statistics DB Stream Index Optimization (nestads-statistics-db-stream) — Updated 2026-04-14
+  19. [7c939d] Master Frontend Dashboard Redesign (nestads-master-frontend) — Updated 2026-04-13
+  20. [80ba0b] Terraform EKS Node Group Update (nestads-terraform) — Updated 2026-04-13
+  21. [f10e91] Deliverer AOP Logging Enhancement (nestads-deliverer) — Updated 2026-04-13
+  22. [487954] Response Stream Windowing Fix (nestads-response-stream) — Updated 2026-04-13
+  23. [7ee198] Backend Rate Limiting Middleware (nestads-backend) — Updated 2026-04-13
+  24. [714857] Frontend Error Boundary Implementation (nestads-frontend) — Updated 2026-04-13
+  25. [d7267b] Airflow DAG Cleanup Job (nestads-airflow-dags) — Updated 2026-04-13
+  26. [b4acef] Status Manager Alert Integration (nestads-status-manager) — Updated 2026-04-12
+  27. [e6a8fc] Log Receiver Health Check Endpoint (nestads-log-receiver) — Updated 2026-04-12
+  28. [5dae55] Android SDK Opt-Out Flag (nestads-sdk-android) — Updated 2026-04-11
+  29. [4ba047] iOS SDK Privacy Manifest Update (nestads-sdk-ios) — Updated 2026-04-11
+  30. [7f2004] Backend Audit Log Table (nestads-backend) — Updated 2026-04-10 (stale)
+
+Done (5):
+  1. [ecc950] Campaign Budget Refactor (nestads-backend) — Completed 2026-04-05
+  2. [c53c4f] Kafka DLQ Routing (nestads-response-stream) — Completed 2026-04-02
+  3. [615655] Terraform VPC Update (nestads-terraform) — Completed 2026-03-30
+  4. [fc53da] Ad Group Status Fix (nestads-backend) — Completed 2026-03-28
+  5. [20d196] Frontend Dark Mode (nestads-frontend) — Completed 2026-03-25

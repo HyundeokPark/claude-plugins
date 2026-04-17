@@ -1,0 +1,317 @@
+[
+  {
+    "id": "457cda",
+    "slug": "small-task-fixture",
+    "title": "Small Task Fixture",
+    "project": "nestads-backend",
+    "status": "inprogress",
+    "created": "2026-04-14",
+    "updated": "2026-04-16"
+  },
+  {
+    "id": "e515a0",
+    "slug": "medium-task-fixture",
+    "title": "Medium Task Fixture",
+    "project": "nestads-frontend",
+    "status": "inprogress",
+    "created": "2026-04-13",
+    "updated": "2026-04-15"
+  },
+  {
+    "id": "026585",
+    "slug": "large-task-fixture",
+    "title": "Large Task Fixture",
+    "project": "nestads-statistics-stream",
+    "status": "inprogress",
+    "created": "2026-04-10",
+    "updated": "2026-04-14"
+  },
+  {
+    "id": "8a7400",
+    "slug": "oversized-blockers-fixture",
+    "title": "Oversized Blockers Fixture",
+    "project": "nestads-backend",
+    "status": "inprogress",
+    "created": "2026-04-15",
+    "updated": "2026-04-16"
+  },
+  {
+    "id": "ecc950",
+    "slug": "campaign-budget-refactor",
+    "title": "Campaign Budget Refactor",
+    "project": "nestads-backend",
+    "status": "done",
+    "created": "2026-03-01",
+    "updated": "2026-04-05"
+  },
+  {
+    "id": "fc53da",
+    "slug": "ad-group-status-fix",
+    "title": "Ad Group Status Fix",
+    "project": "nestads-backend",
+    "status": "done",
+    "created": "2026-03-05",
+    "updated": "2026-03-28"
+  },
+  {
+    "id": "20d196",
+    "slug": "frontend-dark-mode",
+    "title": "Frontend Dark Mode",
+    "project": "nestads-frontend",
+    "status": "done",
+    "created": "2026-03-10",
+    "updated": "2026-03-25"
+  },
+  {
+    "id": "c53c4f",
+    "slug": "kafka-dlq-routing",
+    "title": "Kafka DLQ Routing",
+    "project": "nestads-response-stream",
+    "status": "done",
+    "created": "2026-03-15",
+    "updated": "2026-04-02"
+  },
+  {
+    "id": "615655",
+    "slug": "terraform-vpc-update",
+    "title": "Terraform VPC Update",
+    "project": "nestads-terraform",
+    "status": "done",
+    "created": "2026-03-20",
+    "updated": "2026-03-30"
+  },
+  {
+    "id": "531768",
+    "slug": "ad-click-dedup-kafka",
+    "title": "Ad Click Deduplication via Kafka",
+    "project": "nestads-response-stream",
+    "status": "inprogress",
+    "created": "2026-04-10",
+    "updated": "2026-04-16"
+  },
+  {
+    "id": "3120d9",
+    "slug": "campaign-list-api-v2",
+    "title": "Campaign List API v2",
+    "project": "nestads-backend",
+    "status": "inprogress",
+    "created": "2026-04-10",
+    "updated": "2026-04-16"
+  },
+  {
+    "id": "7e941d",
+    "slug": "session-start-hook-refactor",
+    "title": "Session Start Hook Refactor",
+    "project": "nestads-local",
+    "status": "inprogress",
+    "created": "2026-04-11",
+    "updated": "2026-04-16"
+  },
+  {
+    "id": "5a69f3",
+    "slug": "label-stream-avro-upgrade",
+    "title": "Label Stream Avro Schema Upgrade",
+    "project": "nestads-label-stream",
+    "status": "inprogress",
+    "created": "2026-04-11",
+    "updated": "2026-04-15"
+  },
+  {
+    "id": "93c709",
+    "slug": "deliverer-reactive-redis",
+    "title": "Deliverer Reactive Redis Migration",
+    "project": "nestads-deliverer",
+    "status": "inprogress",
+    "created": "2026-04-11",
+    "updated": "2026-04-15"
+  },
+  {
+    "id": "3b0a39",
+    "slug": "status-manager-state-machine",
+    "title": "Status Manager State Machine",
+    "project": "nestads-status-manager",
+    "status": "inprogress",
+    "created": "2026-04-12",
+    "updated": "2026-04-15"
+  },
+  {
+    "id": "c04e89",
+    "slug": "log-receiver-http-kafka",
+    "title": "Log Receiver HTTP→Kafka Pipeline",
+    "project": "nestads-log-receiver",
+    "status": "inprogress",
+    "created": "2026-04-12",
+    "updated": "2026-04-14"
+  },
+  {
+    "id": "84351e",
+    "slug": "airflow-dag-statistics",
+    "title": "Airflow DAG for Statistics Backfill",
+    "project": "nestads-airflow-dags",
+    "status": "inprogress",
+    "created": "2026-04-12",
+    "updated": "2026-04-14"
+  },
+  {
+    "id": "2e9509",
+    "slug": "android-sdk-click-tracking",
+    "title": "Android SDK Click Tracking API",
+    "project": "nestads-sdk-android",
+    "status": "inprogress",
+    "created": "2026-04-12",
+    "updated": "2026-04-14"
+  },
+  {
+    "id": "4a96cd",
+    "slug": "ios-sdk-impression-batching",
+    "title": "iOS SDK Impression Batching",
+    "project": "nestads-sdk-ios",
+    "status": "inprogress",
+    "created": "2026-04-12",
+    "updated": "2026-04-14"
+  },
+  {
+    "id": "57c804",
+    "slug": "frontend-campaign-filter",
+    "title": "Frontend Campaign Filter Panel",
+    "project": "nestads-frontend",
+    "status": "inprogress",
+    "created": "2026-04-13",
+    "updated": "2026-04-14"
+  },
+  {
+    "id": "4ae731",
+    "slug": "backend-jwt-rotation",
+    "title": "Backend JWT Key Rotation",
+    "project": "nestads-backend",
+    "status": "inprogress",
+    "created": "2026-04-13",
+    "updated": "2026-04-14"
+  },
+  {
+    "id": "bf328c",
+    "slug": "statistics-db-stream-index",
+    "title": "Statistics DB Stream Index Optimization",
+    "project": "nestads-statistics-db-stream",
+    "status": "inprogress",
+    "created": "2026-04-13",
+    "updated": "2026-04-14"
+  },
+  {
+    "id": "7c939d",
+    "slug": "master-frontend-dashboard",
+    "title": "Master Frontend Dashboard Redesign",
+    "project": "nestads-master-frontend",
+    "status": "inprogress",
+    "created": "2026-04-13",
+    "updated": "2026-04-13"
+  },
+  {
+    "id": "80ba0b",
+    "slug": "terraform-eks-node-group",
+    "title": "Terraform EKS Node Group Update",
+    "project": "nestads-terraform",
+    "status": "inprogress",
+    "created": "2026-04-13",
+    "updated": "2026-04-13"
+  },
+  {
+    "id": "f10e91",
+    "slug": "deliverer-aop-logging",
+    "title": "Deliverer AOP Logging Enhancement",
+    "project": "nestads-deliverer",
+    "status": "inprogress",
+    "created": "2026-04-13",
+    "updated": "2026-04-13"
+  },
+  {
+    "id": "f99e1a",
+    "slug": "lake-token-diet-v1",
+    "title": "Lake Token Diet v1",
+    "project": "nestads-local",
+    "status": "inprogress",
+    "created": "2026-04-16",
+    "updated": "2026-04-16"
+  },
+  {
+    "id": "487954",
+    "slug": "response-stream-windowing",
+    "title": "Response Stream Windowing Fix",
+    "project": "nestads-response-stream",
+    "status": "inprogress",
+    "created": "2026-04-13",
+    "updated": "2026-04-13"
+  },
+  {
+    "id": "7ee198",
+    "slug": "backend-rate-limiting",
+    "title": "Backend Rate Limiting Middleware",
+    "project": "nestads-backend",
+    "status": "inprogress",
+    "created": "2026-04-12",
+    "updated": "2026-04-13"
+  },
+  {
+    "id": "714857",
+    "slug": "frontend-error-boundary",
+    "title": "Frontend Error Boundary Implementation",
+    "project": "nestads-frontend",
+    "status": "inprogress",
+    "created": "2026-04-12",
+    "updated": "2026-04-13"
+  },
+  {
+    "id": "d7267b",
+    "slug": "airflow-dag-cleanup",
+    "title": "Airflow DAG Cleanup Job",
+    "project": "nestads-airflow-dags",
+    "status": "inprogress",
+    "created": "2026-04-11",
+    "updated": "2026-04-13"
+  },
+  {
+    "id": "b4acef",
+    "slug": "status-manager-alert",
+    "title": "Status Manager Alert Integration",
+    "project": "nestads-status-manager",
+    "status": "inprogress",
+    "created": "2026-04-11",
+    "updated": "2026-04-12"
+  },
+  {
+    "id": "e6a8fc",
+    "slug": "log-receiver-health-check",
+    "title": "Log Receiver Health Check Endpoint",
+    "project": "nestads-log-receiver",
+    "status": "inprogress",
+    "created": "2026-04-10",
+    "updated": "2026-04-12"
+  },
+  {
+    "id": "5dae55",
+    "slug": "android-sdk-opt-out",
+    "title": "Android SDK Opt-Out Flag",
+    "project": "nestads-sdk-android",
+    "status": "inprogress",
+    "created": "2026-04-10",
+    "updated": "2026-04-11"
+  },
+  {
+    "id": "4ba047",
+    "slug": "ios-sdk-privacy-manifest",
+    "title": "iOS SDK Privacy Manifest Update",
+    "project": "nestads-sdk-ios",
+    "status": "inprogress",
+    "created": "2026-04-10",
+    "updated": "2026-04-11"
+  },
+  {
+    "id": "7f2004",
+    "slug": "backend-audit-log",
+    "title": "Backend Audit Log Table",
+    "project": "nestads-backend",
+    "status": "inprogress",
+    "created": "2026-04-10",
+    "updated": "2026-04-10"
+  }
+]

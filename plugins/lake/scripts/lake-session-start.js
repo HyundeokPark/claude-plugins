@@ -70,23 +70,30 @@ function buildNotification() {
 
   if (tasks.length === 0) return null;
 
-  const lines = ['[PRD Lake] 진행 중인 작업이 있습니다:'];
-
-  const items = tasks.slice(0, 5).map(task => {
+  const tasksWithDate = tasks.map(task => {
     const specPath = path.join(INPROGRESS, task.name, 'spec.md');
     const dateStr = getUpdatedDate(specPath);
-    const stale = isStale(dateStr) ? ' (stale)' : '';
-    const date = dateStr ? dateStr.slice(0, 10) : '?';
-    return `  - ${task.name} (${date})${stale}`;
+    return { name: task.name, dateStr };
   });
 
-  lines.push(...items);
+  const topThree = tasksWithDate
+    .slice()
+    .sort((a, b) => {
+      const da = a.dateStr ? new Date(a.dateStr.replace(' ', 'T')).getTime() : 0;
+      const db = b.dateStr ? new Date(b.dateStr.replace(' ', 'T')).getTime() : 0;
+      return db - da;
+    })
+    .slice(0, 3);
 
-  if (tasks.length > 5) {
-    lines.push(`  ... 외 ${tasks.length - 5}개`);
-  }
+  const staleItems = tasksWithDate.filter(t => isStale(t.dateStr));
+  const stale = staleItems.length > 0;
+  const staleCount = staleItems.length;
 
-  lines.push('`/lake resume`로 이어서 할 수 있습니다.');
+  const lines = [
+    `[PRD Lake] 진행 중 ${tasks.length}개 (최근: ${topThree.map(t => t.name).join(', ')})`,
+    stale ? `⚠ ${staleCount}개 stale (7일+)` : '모두 최근 업데이트',
+    '`/lake resume`으로 이어서 할 수 있습니다.',
+  ];
 
   return lines.join('\n');
 }
@@ -99,7 +106,18 @@ function ensureLakeSetup() {
   fs.mkdirSync(LAKE_DIR, { recursive: true });
   // 항상 최신 버전으로 덮어쓰기
   if (fs.existsSync(cliSrc)) {
-    fs.copyFileSync(cliSrc, cliDst);
+    const tmp = cliDst + '.tmp.' + process.pid;
+    fs.copyFileSync(cliSrc, tmp);
+    fs.renameSync(tmp, cliDst);
+    // version 로그 기록 (stderr, 배포 확인용)
+    try {
+      const versionMatch = fs.readFileSync(cliSrc, 'utf8').match(/LAKE_CLI_VERSION\s*=\s*['"]([^'"]+)['"]/);
+      if (versionMatch) {
+        process.stderr.write(`[lake-session-start] deployed lake-cli v${versionMatch[1]}\n`);
+      }
+    } catch {
+      // 버전 파싱 실패해도 블록되지 않음
+    }
   }
 
   // 2. ~/.local/bin/lake 실행 스크립트 생성

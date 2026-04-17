@@ -1,0 +1,14 @@
+"checklist" file matches:
+
+  [inprogress] large-task-fixture/plan.md:3
+    "## Checklist"
+
+  [inprogress] medium-task-fixture/plan.md:3
+    "## Checklist"
+
+  [inprogress] oversized-blockers-fixture/plan.md:3
+    "## Checklist"
+
+  [inprogress] small-task-fixture/plan.md:3
+    "## Checklist"
+

@@ -1,0 +1,515 @@
+"blocker" file matches:
+
+  [inprogress] large-task-fixture/context.md:32
+    "## Blockers"
+
+  [inprogress] medium-task-fixture/context.md:23
+    "## Blockers"
+
+  [inprogress] oversized-blockers-fixture/spec.md:1
+    "# Oversized Blockers Fixture"
+
+  [inprogress] oversized-blockers-fixture/plan.md:1
+    "# Plan: Oversized Blockers Fixture"
+
+  [inprogress] oversized-blockers-fixture/plan.md:5
+    "- [x] Create oversized context.md with 12000+ char Blockers section"
+
+  [inprogress] oversized-blockers-fixture/context.md:1
+    "# Context: Oversized Blockers Fixture"
+
+  [inprogress] oversized-blockers-fixture/context.md:4
+    "- **Files**: tests/fixtures/oversized-blockers/"
+
+  [inprogress] oversized-blockers-fixture/context.md:9
+    "- The Blockers section below exceeds HARD_CHAR_CAP (12000 chars) intentionally."
+
+  [inprogress] oversized-blockers-fixture/context.md:11
+    "## Blockers"
+
+  [inprogress] oversized-blockers-fixture/context.md:13
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [001]"
+
+  [inprogress] oversized-blockers-fixture/context.md:14
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [002]"
+
+  [inprogress] oversized-blockers-fixture/context.md:15
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [003]"
+
+  [inprogress] oversized-blockers-fixture/context.md:16
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [004]"
+
+  [inprogress] oversized-blockers-fixture/context.md:17
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [005]"
+
+  [inprogress] oversized-blockers-fixture/context.md:18
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [006]"
+
+  [inprogress] oversized-blockers-fixture/context.md:19
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [007]"
+
+  [inprogress] oversized-blockers-fixture/context.md:20
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [008]"
+
+  [inprogress] oversized-blockers-fixture/context.md:21
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [009]"
+
+  [inprogress] oversized-blockers-fixture/context.md:22
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [010]"
+
+  [inprogress] oversized-blockers-fixture/context.md:23
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [011]"
+
+  [inprogress] oversized-blockers-fixture/context.md:24
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [012]"
+
+  [inprogress] oversized-blockers-fixture/context.md:25
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [013]"
+
+  [inprogress] oversized-blockers-fixture/context.md:26
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [014]"
+
+  [inprogress] oversized-blockers-fixture/context.md:27
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [015]"
+
+  [inprogress] oversized-blockers-fixture/context.md:28
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [016]"
+
+  [inprogress] oversized-blockers-fixture/context.md:29
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [017]"
+
+  [inprogress] oversized-blockers-fixture/context.md:30
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [018]"
+
+  [inprogress] oversized-blockers-fixture/context.md:31
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [019]"
+
+  [inprogress] oversized-blockers-fixture/context.md:32
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [020]"
+
+  [inprogress] oversized-blockers-fixture/context.md:33
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [021]"
+
+  [inprogress] oversized-blockers-fixture/context.md:34
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [022]"
+
+  [inprogress] oversized-blockers-fixture/context.md:35
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [023]"
+
+  [inprogress] oversized-blockers-fixture/context.md:36
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [024]"
+
+  [inprogress] oversized-blockers-fixture/context.md:37
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [025]"
+
+  [inprogress] oversized-blockers-fixture/context.md:38
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [026]"
+
+  [inprogress] oversized-blockers-fixture/context.md:39
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [027]"
+
+  [inprogress] oversized-blockers-fixture/context.md:40
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [028]"
+
+  [inprogress] oversized-blockers-fixture/context.md:41
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [029]"
+
+  [inprogress] oversized-blockers-fixture/context.md:42
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [030]"
+
+  [inprogress] oversized-blockers-fixture/context.md:43
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [031]"
+
+  [inprogress] oversized-blockers-fixture/context.md:44
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [032]"
+
+  [inprogress] oversized-blockers-fixture/context.md:45
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [033]"
+
+  [inprogress] oversized-blockers-fixture/context.md:46
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [034]"
+
+  [inprogress] oversized-blockers-fixture/context.md:47
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [035]"
+
+  [inprogress] oversized-blockers-fixture/context.md:48
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [036]"
+
+  [inprogress] oversized-blockers-fixture/context.md:49
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [037]"
+
+  [inprogress] oversized-blockers-fixture/context.md:50
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [038]"
+
+  [inprogress] oversized-blockers-fixture/context.md:51
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [039]"
+
+  [inprogress] oversized-blockers-fixture/context.md:52
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [040]"
+
+  [inprogress] oversized-blockers-fixture/context.md:53
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [041]"
+
+  [inprogress] oversized-blockers-fixture/context.md:54
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [042]"
+
+  [inprogress] oversized-blockers-fixture/context.md:55
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [043]"
+
+  [inprogress] oversized-blockers-fixture/context.md:56
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [044]"
+
+  [inprogress] oversized-blockers-fixture/context.md:57
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [045]"
+
+  [inprogress] oversized-blockers-fixture/context.md:58
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [046]"
+
+  [inprogress] oversized-blockers-fixture/context.md:59
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [047]"
+
+  [inprogress] oversized-blockers-fixture/context.md:60
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [048]"
+
+  [inprogress] oversized-blockers-fixture/context.md:61
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [049]"
+
+  [inprogress] oversized-blockers-fixture/context.md:62
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [050]"
+
+  [inprogress] oversized-blockers-fixture/context.md:63
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [051]"
+
+  [inprogress] oversized-blockers-fixture/context.md:64
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [052]"
+
+  [inprogress] oversized-blockers-fixture/context.md:65
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [053]"
+
+  [inprogress] oversized-blockers-fixture/context.md:66
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [054]"
+
+  [inprogress] oversized-blockers-fixture/context.md:67
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [055]"
+
+  [inprogress] oversized-blockers-fixture/context.md:68
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [056]"
+
+  [inprogress] oversized-blockers-fixture/context.md:69
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [057]"
+
+  [inprogress] oversized-blockers-fixture/context.md:70
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [058]"
+
+  [inprogress] oversized-blockers-fixture/context.md:71
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [059]"
+
+  [inprogress] oversized-blockers-fixture/context.md:72
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [060]"
+
+  [inprogress] oversized-blockers-fixture/context.md:73
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [061]"
+
+  [inprogress] oversized-blockers-fixture/context.md:74
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [062]"
+
+  [inprogress] oversized-blockers-fixture/context.md:75
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [063]"
+
+  [inprogress] oversized-blockers-fixture/context.md:76
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [064]"
+
+  [inprogress] oversized-blockers-fixture/context.md:77
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [065]"
+
+  [inprogress] oversized-blockers-fixture/context.md:78
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [066]"
+
+  [inprogress] oversized-blockers-fixture/context.md:79
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [067]"
+
+  [inprogress] oversized-blockers-fixture/context.md:80
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [068]"
+
+  [inprogress] oversized-blockers-fixture/context.md:81
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [069]"
+
+  [inprogress] oversized-blockers-fixture/context.md:82
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [070]"
+
+  [inprogress] oversized-blockers-fixture/context.md:83
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [071]"
+
+  [inprogress] oversized-blockers-fixture/context.md:84
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [072]"
+
+  [inprogress] oversized-blockers-fixture/context.md:85
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [073]"
+
+  [inprogress] oversized-blockers-fixture/context.md:86
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [074]"
+
+  [inprogress] oversized-blockers-fixture/context.md:87
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [075]"
+
+  [inprogress] oversized-blockers-fixture/context.md:88
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [076]"
+
+  [inprogress] oversized-blockers-fixture/context.md:89
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [077]"
+
+  [inprogress] oversized-blockers-fixture/context.md:90
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [078]"
+
+  [inprogress] oversized-blockers-fixture/context.md:91
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [079]"
+
+  [inprogress] oversized-blockers-fixture/context.md:92
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [080]"
+
+  [inprogress] oversized-blockers-fixture/context.md:93
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [081]"
+
+  [inprogress] oversized-blockers-fixture/context.md:94
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [082]"
+
+  [inprogress] oversized-blockers-fixture/context.md:95
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [083]"
+
+  [inprogress] oversized-blockers-fixture/context.md:96
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [084]"
+
+  [inprogress] oversized-blockers-fixture/context.md:97
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [085]"
+
+  [inprogress] oversized-blockers-fixture/context.md:98
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [086]"
+
+  [inprogress] oversized-blockers-fixture/context.md:99
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [087]"
+
+  [inprogress] oversized-blockers-fixture/context.md:100
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [088]"
+
+  [inprogress] oversized-blockers-fixture/context.md:101
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [089]"
+
+  [inprogress] oversized-blockers-fixture/context.md:102
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [090]"
+
+  [inprogress] oversized-blockers-fixture/context.md:103
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [091]"
+
+  [inprogress] oversized-blockers-fixture/context.md:104
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [092]"
+
+  [inprogress] oversized-blockers-fixture/context.md:105
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [093]"
+
+  [inprogress] oversized-blockers-fixture/context.md:106
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [094]"
+
+  [inprogress] oversized-blockers-fixture/context.md:107
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [095]"
+
+  [inprogress] oversized-blockers-fixture/context.md:108
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [096]"
+
+  [inprogress] oversized-blockers-fixture/context.md:109
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [097]"
+
+  [inprogress] oversized-blockers-fixture/context.md:110
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [098]"
+
+  [inprogress] oversized-blockers-fixture/context.md:111
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [099]"
+
+  [inprogress] oversized-blockers-fixture/context.md:112
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [100]"
+
+  [inprogress] oversized-blockers-fixture/context.md:113
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [101]"
+
+  [inprogress] oversized-blockers-fixture/context.md:114
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [102]"
+
+  [inprogress] oversized-blockers-fixture/context.md:115
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [103]"
+
+  [inprogress] oversized-blockers-fixture/context.md:116
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [104]"
+
+  [inprogress] oversized-blockers-fixture/context.md:117
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [105]"
+
+  [inprogress] oversized-blockers-fixture/context.md:118
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [106]"
+
+  [inprogress] oversized-blockers-fixture/context.md:119
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [107]"
+
+  [inprogress] oversized-blockers-fixture/context.md:120
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [108]"
+
+  [inprogress] oversized-blockers-fixture/context.md:121
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [109]"
+
+  [inprogress] oversized-blockers-fixture/context.md:122
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [110]"
+
+  [inprogress] oversized-blockers-fixture/context.md:123
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [111]"
+
+  [inprogress] oversized-blockers-fixture/context.md:124
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [112]"
+
+  [inprogress] oversized-blockers-fixture/context.md:125
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [113]"
+
+  [inprogress] oversized-blockers-fixture/context.md:126
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [114]"
+
+  [inprogress] oversized-blockers-fixture/context.md:127
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [115]"
+
+  [inprogress] oversized-blockers-fixture/context.md:128
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [116]"
+
+  [inprogress] oversized-blockers-fixture/context.md:129
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [117]"
+
+  [inprogress] oversized-blockers-fixture/context.md:130
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [118]"
+
+  [inprogress] oversized-blockers-fixture/context.md:131
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [119]"
+
+  [inprogress] oversized-blockers-fixture/context.md:132
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [120]"
+
+  [inprogress] oversized-blockers-fixture/context.md:133
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [121]"
+
+  [inprogress] oversized-blockers-fixture/context.md:134
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [122]"
+
+  [inprogress] oversized-blockers-fixture/context.md:135
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [123]"
+
+  [inprogress] oversized-blockers-fixture/context.md:136
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [124]"
+
+  [inprogress] oversized-blockers-fixture/context.md:137
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [125]"
+
+  [inprogress] oversized-blockers-fixture/context.md:138
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [126]"
+
+  [inprogress] oversized-blockers-fixture/context.md:139
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [127]"
+
+  [inprogress] oversized-blockers-fixture/context.md:140
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [128]"
+
+  [inprogress] oversized-blockers-fixture/context.md:141
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [129]"
+
+  [inprogress] oversized-blockers-fixture/context.md:142
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [130]"
+
+  [inprogress] oversized-blockers-fixture/context.md:143
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [131]"
+
+  [inprogress] oversized-blockers-fixture/context.md:144
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [132]"
+
+  [inprogress] oversized-blockers-fixture/context.md:145
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [133]"
+
+  [inprogress] oversized-blockers-fixture/context.md:146
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [134]"
+
+  [inprogress] oversized-blockers-fixture/context.md:147
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [135]"
+
+  [inprogress] oversized-blockers-fixture/context.md:148
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [136]"
+
+  [inprogress] oversized-blockers-fixture/context.md:149
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [137]"
+
+  [inprogress] oversized-blockers-fixture/context.md:150
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [138]"
+
+  [inprogress] oversized-blockers-fixture/context.md:151
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [139]"
+
+  [inprogress] oversized-blockers-fixture/context.md:152
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [140]"
+
+  [inprogress] oversized-blockers-fixture/context.md:153
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [141]"
+
+  [inprogress] oversized-blockers-fixture/context.md:154
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [142]"
+
+  [inprogress] oversized-blockers-fixture/context.md:155
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [143]"
+
+  [inprogress] oversized-blockers-fixture/context.md:156
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [144]"
+
+  [inprogress] oversized-blockers-fixture/context.md:157
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [145]"
+
+  [inprogress] oversized-blockers-fixture/context.md:158
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [146]"
+
+  [inprogress] oversized-blockers-fixture/context.md:159
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [147]"
+
+  [inprogress] oversized-blockers-fixture/context.md:160
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [148]"
+
+  [inprogress] oversized-blockers-fixture/context.md:161
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [149]"
+
+  [inprogress] oversized-blockers-fixture/context.md:162
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [150]"
+
+  [inprogress] oversized-blockers-fixture/context.md:163
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [151]"
+
+  [inprogress] oversized-blockers-fixture/context.md:164
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [152]"
+
+  [inprogress] oversized-blockers-fixture/context.md:165
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [153]"
+
+  [inprogress] oversized-blockers-fixture/context.md:166
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [154]"
+
+  [inprogress] oversized-blockers-fixture/context.md:167
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [155]"
+
+  [inprogress] oversized-blockers-fixture/context.md:168
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [156]"
+
+  [inprogress] oversized-blockers-fixture/context.md:169
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [157]"
+
+  [inprogress] oversized-blockers-fixture/context.md:170
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [158]"
+
+  [inprogress] oversized-blockers-fixture/context.md:171
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [159]"
+
+  [inprogress] oversized-blockers-fixture/context.md:172
+    "BLOCKER: Upstream API contract not finalized — waiting for owning team to confirm interface and complete staging validation before this can proceed. [160]"
+
+  [inprogress] small-task-fixture/spec.md:10
+    "Ensure protected sections (blockers, unresolved tasks) are never truncated."
+
+  [inprogress] small-task-fixture/context.md:12
+    "## Blockers"
+

@@ -1,0 +1,1 @@
+Unknown flag: --bogus. See 'lake-cli.js help'.

@@ -14,9 +14,11 @@ const path = require('path');
 const LAKE_DIR = path.join(process.env.HOME, '.claude', 'prd-lake');
 const INPROGRESS = path.join(LAKE_DIR, 'inprogress');
 const MARKER_FILE = path.join(LAKE_DIR, '.last-reminder');
-const INTERVAL_MS = 30 * 60 * 1000; // 30분
+const INTERVAL_MS = 60 * 60 * 1000; // 60분
 
 function shouldRemind() {
+  const OFF_FILE = path.join(LAKE_DIR, '.reminder-off');
+  if (fs.existsSync(OFF_FILE)) return false;
   const now = Date.now();
 
   try {

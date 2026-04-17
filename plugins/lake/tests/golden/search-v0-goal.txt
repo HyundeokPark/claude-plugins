@@ -1,0 +1,110 @@
+"goal" file matches:
+
+  [inprogress] ad-click-dedup-kafka/spec.md:6
+    "## Goal"
+
+  [inprogress] airflow-dag-cleanup/spec.md:6
+    "## Goal"
+
+  [inprogress] airflow-dag-statistics/spec.md:6
+    "## Goal"
+
+  [inprogress] android-sdk-click-tracking/spec.md:6
+    "## Goal"
+
+  [inprogress] android-sdk-opt-out/spec.md:6
+    "## Goal"
+
+  [inprogress] backend-audit-log/spec.md:6
+    "## Goal"
+
+  [inprogress] backend-jwt-rotation/spec.md:6
+    "## Goal"
+
+  [inprogress] backend-rate-limiting/spec.md:6
+    "## Goal"
+
+  [inprogress] campaign-list-api-v2/spec.md:6
+    "## Goal"
+
+  [inprogress] deliverer-aop-logging/spec.md:6
+    "## Goal"
+
+  [inprogress] deliverer-reactive-redis/spec.md:6
+    "## Goal"
+
+  [inprogress] frontend-campaign-filter/spec.md:6
+    "## Goal"
+
+  [inprogress] frontend-error-boundary/spec.md:6
+    "## Goal"
+
+  [inprogress] ios-sdk-impression-batching/spec.md:6
+    "## Goal"
+
+  [inprogress] ios-sdk-privacy-manifest/spec.md:6
+    "## Goal"
+
+  [inprogress] label-stream-avro-upgrade/spec.md:6
+    "## Goal"
+
+  [inprogress] lake-token-diet-v1/spec.md:6
+    "## Goal"
+
+  [inprogress] large-task-fixture/spec.md:7
+    "## Goal"
+
+  [inprogress] log-receiver-health-check/spec.md:6
+    "## Goal"
+
+  [inprogress] log-receiver-http-kafka/spec.md:6
+    "## Goal"
+
+  [inprogress] master-frontend-dashboard/spec.md:6
+    "## Goal"
+
+  [inprogress] medium-task-fixture/spec.md:7
+    "## Goal"
+
+  [inprogress] oversized-blockers-fixture/spec.md:7
+    "## Goal"
+
+  [inprogress] response-stream-windowing/spec.md:6
+    "## Goal"
+
+  [inprogress] session-start-hook-refactor/spec.md:6
+    "## Goal"
+
+  [inprogress] small-task-fixture/spec.md:7
+    "## Goal"
+
+  [inprogress] small-task-fixture/plan.md:16
+    "- [ ] Add spec.md Goal-section fallback (frontmatter + 20 lines)"
+
+  [inprogress] statistics-db-stream-index/spec.md:6
+    "## Goal"
+
+  [inprogress] status-manager-alert/spec.md:6
+    "## Goal"
+
+  [inprogress] status-manager-state-machine/spec.md:6
+    "## Goal"
+
+  [inprogress] terraform-eks-node-group/spec.md:6
+    "## Goal"
+
+  [done] ad-group-status-fix/spec.md:6
+    "## Goal"
+
+  [done] campaign-budget-refactor/spec.md:6
+    "## Goal"
+
+  [done] frontend-dark-mode/spec.md:6
+    "## Goal"
+
+  [done] kafka-dlq-routing/spec.md:6
+    "## Goal"
+
+  [done] terraform-vpc-update/spec.md:6
+    "## Goal"
+

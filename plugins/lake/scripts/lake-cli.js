@@ -17,6 +17,8 @@
  *   node lake-cli.js unrelate <task1> <task2># Remove relates-to link
  *   node lake-cli.js block <blocked> <blocker># Mark task as blocked by another
  *   node lake-cli.js unblock <blocked> <blocker># Remove blocked-by link
+ *   node lake-cli.js summary <hash-or-slug> # One-line task summary
+ *   node lake-cli.js version                # Print version + git hash
  */
 
 const fs = require('fs');
@@ -45,7 +47,7 @@ function writeIndex(index) {
 }
 
 function findTask(index, query) {
-  // Numeric query → position in the same order as cmdList (inprogress by updated desc, top-level then children)
+  // Numeric query → position in the same order as cmdList (inprogress by updated desc, top-level only)
   if (/^\d+$/.test(query)) {
     const n = parseInt(query, 10);
     const inprog = index.filter(t => t.status === 'inprogress')
@@ -94,8 +96,6 @@ function readFileSafe(p) {
   try { return fs.readFileSync(p, 'utf8'); } catch { return null; }
 }
 
-// --- Commands ---
-
 function displayWidth(s) {
   let w = 0;
   for (const ch of String(s)) {
@@ -133,8 +133,145 @@ function relDate(ymd) {
   return `${Math.floor(d / 365)}y ago`;
 }
 
-function cmdList() {
+// --- Version & Flag Contract ---
+
+const LAKE_CLI_VERSION = '1.0.0';
+
+const VIEW_DEFAULTS = {
+  resume: 'full',     // v1: v0 byte-identical
+  list:   'default',  // v1: v0 byte-identical
+  search: 'default',  // v1: v0 byte-identical
+};
+
+const FLAG_SPEC = {
+  resume: {
+    view: ['summary', 'full', 'minimal', 'files'],
+    aliases: { '--full': 'full', '--minimal': 'minimal', '--files': 'files', '--summary': 'summary' },
+  },
+  list: {
+    view: ['default', 'compressed', 'tree', 'all'],
+    aliases: { '--tree': 'tree', '--all': 'all', '--compressed': 'compressed' },
+  },
+  search: {
+    view: ['default', 'compressed', 'full'],
+    aliases: { '--full': 'full', '--compressed': 'compressed' },
+  },
+};
+
+const RESUME_SECTION_BUDGETS = {
+  header:          [1,   200],
+  relations:       [12, 1200],
+  spec:            [22, 1800],
+  plan_unresolved: [30, 2400],
+  plan_resolved:   [10,  800],
+  context:         [40, 2000],
+  journal_head:    [20, 1200],
+  artifacts:       [12,  800],
+};
+const HARD_CHAR_CAP = 12000;
+const PROTECTED_SECTIONS = ['blockers', 'unresolved-plan-top-5', 'latest-decision', 'latest-journal-headline'];
+const DROP_PRIORITY = ['journal_tail', 'artifacts', 'context_non_blocker', 'spec_body', 'plan_resolved'];
+
+const SEARCH_MAX_RESULTS = 20;
+const LIST_MAX_INPROGRESS = 15;
+const LIST_MAX_DONE = 3;
+
+const USAGE = `Usage: lake-cli.js <command> [args]
+Commands: list, resume, save, done, search, summary, version,
+          link, unlink, tree, relate, unrelate, tag, untag, block, unblock, rebuild, find, upsert
+Views: resume --view=summary|full|minimal|files   (v1 default: full)
+       list   --view=default|compressed|tree|all  (v1 default: default)
+       search --view=default|compressed|full      (v1 default: default; v2 also default)
+Flags: --limit N   --no-color   -h/--help   -v/--version
+`;
+
+function printHelp(_cmd) {
+  process.stdout.write(USAGE);
+}
+
+function parseFlags(cmd, args) {
+  const spec = FLAG_SPEC[cmd];
+  if (!spec) return { view: null, limit: null, noColor: false, positional: args };
+  const allowedView = spec.view;
+  const aliases = spec.aliases || {};
+  let view = null;
+  let limit = null;
+  let noColor = false;
+  const positional = [];
+  const seen = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '-h' || a === '--help') {
+      printHelp(cmd);
+      process.exit(0);
+    }
+    if (a === '-v' || a === '--version') {
+      cmdVersion();
+      process.exit(0);
+    }
+    if (a === '--no-color') { noColor = true; continue; }
+    if (a.startsWith('--view=')) {
+      const v = a.slice(7);
+      if (!allowedView.includes(v)) {
+        process.stderr.write(`Unknown view value: ${v}. Allowed: ${allowedView.join(', ')}.\n`);
+        process.exit(2);
+      }
+      seen.push('--view=' + v);
+      view = v;
+      continue;
+    }
+    if (a === '--view') {
+      const v = args[++i];
+      if (!allowedView.includes(v)) {
+        process.stderr.write(`Unknown view value: ${v}. Allowed: ${allowedView.join(', ')}.\n`);
+        process.exit(2);
+      }
+      seen.push('--view=' + v);
+      view = v;
+      continue;
+    }
+    if (a.startsWith('--limit=')) { limit = parseInt(a.slice(8), 10); continue; }
+    if (a === '--limit') { limit = parseInt(args[++i], 10); continue; }
+    if (aliases[a]) {
+      seen.push('--view=' + aliases[a]);
+      view = aliases[a];
+      continue;
+    }
+    if (a.startsWith('--')) {
+      process.stderr.write(`Unknown flag: ${a}. See 'lake-cli.js help'.\n`);
+      process.exit(2);
+    }
+    positional.push(a);
+  }
+  // Conflict detection: multiple distinct --view resolutions
+  if (seen.length > 1) {
+    const distinct = [...new Set(seen)];
+    if (distinct.length > 1) {
+      const allowedAliases = Object.keys(aliases).join(' ');
+      const allowedList = allowedView.map(v => '--view=' + v).join(', ');
+      process.stderr.write(`Conflicting flags: ${seen.join(' ')}. Pick one of: ${allowedList}${allowedAliases ? ' (aliases: ' + allowedAliases + ')' : ''}.\n`);
+      process.exit(2);
+    }
+  }
+  return { view: view || VIEW_DEFAULTS[cmd], limit, noColor, positional };
+}
+
+// --- Commands ---
+
+function cmdList(rawArgs) {
+  const { view } = parseFlags('list', rawArgs);
   const index = readIndex();
+  switch (view) {
+    case 'default':    process.stdout.write(renderListV0ByteIdentical(index)); return;
+    case 'compressed': process.stdout.write(renderListCompressed(index)); return;
+    case 'tree':       process.stdout.write(renderListTree(index)); return;
+    case 'all':        process.stdout.write(renderListAll(index)); return;
+  }
+}
+
+// v1.3.2 table-format — buffer-accumulating version of cmdList from commit 47de147.
+function renderListV0ByteIdentical(index) {
+  let out = '';
   const inprog = index.filter(t => t.status === 'inprogress')
     .sort((a, b) => b.updated.localeCompare(a.updated));
   const done = index.filter(t => t.status === 'done')
@@ -193,24 +330,121 @@ function cmdList() {
     const headRow = '│' + header.map((h, i) => ' ' + padDisplay(h, colW[i]) + ' ').join('│') + '│';
     const dataRow = (r) => '│' + r.map((v, i) => ' ' + padDisplay(v, colW[i]) + ' ').join('│') + '│';
 
-    console.log(top);
-    console.log(titleLine);
-    console.log(headBot);
-    console.log(headRow);
-    console.log(rowSep);
+    out += top + '\n';
+    out += titleLine + '\n';
+    out += headBot + '\n';
+    out += headRow + '\n';
+    out += rowSep + '\n';
     tbl.forEach((r, i) => {
-      console.log(dataRow(r));
-      if (i < tbl.length - 1) console.log(rowSep);
+      out += dataRow(r) + '\n';
+      if (i < tbl.length - 1) out += rowSep + '\n';
     });
-    console.log(bot);
+    out += bot + '\n';
   };
 
-  console.log('');
+  out += '\n';
   renderTable('진행중', rows);
-  if (doneRows.length) { console.log(''); renderTable('끝냄', doneRows); }
-  console.log('');
-  console.log(`  진행중 ${inprog.length} · 완료 ${index.filter(x => x.status === 'done').length}  ·  lake resume <번호|hash|제목>`);
-  console.log('');
+  if (doneRows.length) { out += '\n'; renderTable('끝냄', doneRows); }
+  out += '\n';
+  out += `  진행중 ${inprog.length} · 완료 ${index.filter(x => x.status === 'done').length}  ·  lake resume <번호|hash|제목>\n`;
+  out += '\n';
+  return out;
+}
+
+function renderListCompressed(index) {
+  let out = '';
+  const inprogAll = index.filter(t => t.status === 'inprogress')
+    .sort((a, b) => b.updated.localeCompare(a.updated));
+  const topLevel = inprogAll.filter(t => !t.parent);
+  const childCountByParent = {};
+  let hiddenChildren = 0;
+  inprogAll.filter(t => t.parent).forEach(t => {
+    childCountByParent[t.parent] = (childCountByParent[t.parent] || 0) + 1;
+    hiddenChildren++;
+  });
+  const staleCount = inprogAll.filter(t => daysSince(t.updated) >= 7).length;
+
+  const topShown = topLevel.slice(0, LIST_MAX_INPROGRESS);
+  const hiddenStale = topLevel.slice(LIST_MAX_INPROGRESS)
+    .filter(t => daysSince(t.updated) >= 7).length;
+
+  out += `In Progress (${inprogAll.length}):\n`;
+  let num = 1;
+  topShown.forEach(t => {
+    const stale = daysSince(t.updated) >= 7 ? ' (stale)' : '';
+    const tags = t.tags ? ` ${t.tags.map(x => '#' + x).join(' ')}` : '';
+    const kids = childCountByParent[t.id] ? ` (+${childCountByParent[t.id]} children)` : '';
+    out += `  ${num}. [${t.id}] ${t.title} (${t.project}) — Updated ${t.updated}${stale}${tags}${kids}\n`;
+    num++;
+  });
+
+  const done = index.filter(t => t.status === 'done')
+    .sort((a, b) => b.updated.localeCompare(a.updated))
+    .slice(0, LIST_MAX_DONE);
+  if (done.length > 0) {
+    out += `\nDone (recent ${done.length}):\n`;
+    done.forEach((t, i) => {
+      out += `  ${num + i}. [${t.id}] ${t.title} (${t.project}) — Completed ${t.updated}\n`;
+    });
+  }
+
+  out += `\nShowing ${topShown.length}/${topLevel.length} inprogress (hidden: stale ${hiddenStale}, children ${hiddenChildren}). Use --view=all to disable truncation.\n`;
+  // Unused but could be useful later — keep staleCount available as part of trailer context.
+  void staleCount;
+  return out;
+}
+
+function renderListTree(index) {
+  let out = '';
+  const parents = index.filter(t => t.children && t.children.length > 0);
+  if (parents.length === 0) {
+    out += 'No epic trees found.\n';
+    return out;
+  }
+  parents.forEach(p => {
+    out += renderTreeNode(index, p, 0);
+  });
+  return out;
+}
+
+function renderTreeNode(index, task, depth) {
+  let out = '';
+  const indent = '  '.repeat(depth);
+  const prefix = depth === 0 ? '📋' : '  └─';
+  const stale = daysSince(task.updated) >= 7 ? ' (stale)' : '';
+  const status = task.status === 'done' ? ' ✅' : '';
+  out += `${indent}${prefix} [${task.id}] ${task.title} (${task.project})${status}${stale}\n`;
+  if (task.children) {
+    task.children.forEach(childId => {
+      const child = index.find(t => t.id === childId);
+      if (child) out += renderTreeNode(index, child, depth + 1);
+    });
+  }
+  return out;
+}
+
+function renderListAll(index) {
+  let out = '';
+  const inprog = index.filter(t => t.status === 'inprogress')
+    .sort((a, b) => b.updated.localeCompare(a.updated));
+  const done = index.filter(t => t.status === 'done')
+    .sort((a, b) => b.updated.localeCompare(a.updated));
+  out += `In Progress (${inprog.length}):\n`;
+  inprog.forEach((t, i) => {
+    const stale = daysSince(t.updated) >= 7 ? ' (stale)' : '';
+    const tags = t.tags ? ` ${t.tags.map(x => '#' + x).join(' ')}` : '';
+    const parent = t.parent ? ` (parent: ${t.parent})` : '';
+    out += `  ${i + 1}. [${t.id}] ${t.title} (${t.project}) — Updated ${t.updated}${stale}${tags}${parent}\n`;
+  });
+  if (done.length > 0) {
+    out += `\nDone (${done.length}):\n`;
+    done.forEach((t, i) => {
+      out += `  ${i + 1}. [${t.id}] ${t.title} (${t.project}) — Completed ${t.updated}\n`;
+    });
+  } else {
+    out += '\nDone: (none)\n';
+  }
+  return out;
 }
 
 function cmdFind(query) {
@@ -220,68 +454,87 @@ function cmdFind(query) {
   console.log(JSON.stringify(task));
 }
 
-function cmdResume(query) {
+function cmdResume(rawArgs) {
+  const { view, positional } = parseFlags('resume', rawArgs);
+  const query = positional[0];
   const index = readIndex();
   const task = findTask(index, query);
   const dir = taskDir(task);
 
-  console.log(`=== Loading previous work: ${task.title} [${task.id}] ===\n`);
+  const isLegacy = process.env.LAKE_LEGACY === '1';
+  if (isLegacy) {
+    process.stderr.write('[lake] LAKE_LEGACY=1 no-op in v1, reserved for v2+\n');
+    // v1: stdout unchanged. No [mode=legacy] tag.
+  }
+
+  switch (view) {
+    case 'full':    process.stdout.write(renderResumeFull(task, index, dir)); return;
+    case 'summary': process.stdout.write(renderResumeSummary(task, index, dir)); return;
+    case 'minimal': process.stdout.write(renderResumeMinimal(task, index, dir)); return;
+    case 'files':   process.stdout.write(renderResumeFiles(task, index, dir)); return;
+  }
+}
+
+// v0 byte-identical — preserves the original cmdResume console.log behavior exactly.
+function renderResumeFull(task, index, dir) {
+  let out = '';
+  out += `=== Loading previous work: ${task.title} [${task.id}] ===\n\n`;
 
   // Show epic links
   if (task.parent) {
     const parent = index.find(t => t.id === task.parent);
-    if (parent) console.log(`📋 Parent: [${parent.id}] ${parent.title}\n`);
+    if (parent) out += `📋 Parent: [${parent.id}] ${parent.title}\n\n`;
   }
   if (task.children && task.children.length > 0) {
-    console.log('📋 Children:');
+    out += '📋 Children:\n';
     task.children.forEach(cid => {
       const child = index.find(t => t.id === cid);
       if (child) {
         const status = child.status === 'done' ? ' ✅' : '';
-        console.log(`  └─ [${child.id}] ${child.title}${status}`);
+        out += `  └─ [${child.id}] ${child.title}${status}\n`;
       }
     });
-    console.log();
+    out += '\n';
   }
   if (task.relates && task.relates.length > 0) {
-    console.log('🔗 Relates to:');
+    out += '🔗 Relates to:\n';
     task.relates.forEach(rid => {
       const rel = index.find(t => t.id === rid);
-      if (rel) console.log(`  ↔ [${rel.id}] ${rel.title}`);
+      if (rel) out += `  ↔ [${rel.id}] ${rel.title}\n`;
     });
-    console.log();
+    out += '\n';
   }
   if (task.blocked_by && task.blocked_by.length > 0) {
-    console.log('🚫 Blocked by:');
+    out += '🚫 Blocked by:\n';
     task.blocked_by.forEach(bid => {
       const b = index.find(t => t.id === bid);
       if (b) {
         const done = b.status === 'done' ? ' ✅' : '';
-        console.log(`  ← [${b.id}] ${b.title}${done}`);
+        out += `  ← [${b.id}] ${b.title}${done}\n`;
       }
     });
-    console.log();
+    out += '\n';
   }
   if (task.blocks && task.blocks.length > 0) {
-    console.log('⏳ Blocks:');
+    out += '⏳ Blocks:\n';
     task.blocks.forEach(bid => {
       const b = index.find(t => t.id === bid);
-      if (b) console.log(`  → [${b.id}] ${b.title}`);
+      if (b) out += `  → [${b.id}] ${b.title}\n`;
     });
-    console.log();
+    out += '\n';
   }
   if (task.tags && task.tags.length > 0) {
-    console.log(`🏷️  Tags: ${task.tags.map(t => `#${t}`).join(' ')}\n`);
+    out += `🏷️  Tags: ${task.tags.map(t => `#${t}`).join(' ')}\n\n`;
   }
 
   const spec = readFileSafe(path.join(dir, 'spec.md'));
-  if (spec) { console.log('--- Spec ---'); console.log(spec); }
+  if (spec) { out += '--- Spec ---\n'; out += spec + '\n'; }
 
   const plan = readFileSafe(path.join(dir, 'plan.md'));
-  if (plan) { console.log('--- Plan ---'); console.log(plan); }
+  if (plan) { out += '--- Plan ---\n'; out += plan + '\n'; }
 
   const context = readFileSafe(path.join(dir, 'context.md'));
-  if (context) { console.log('--- Context ---'); console.log(context); }
+  if (context) { out += '--- Context ---\n'; out += context + '\n'; }
 
   // Latest journal
   const journalDir = path.join(dir, 'journal');
@@ -289,13 +542,276 @@ function cmdResume(query) {
     const journals = fs.readdirSync(journalDir).filter(f => f.endsWith('.md')).sort().reverse();
     if (journals.length > 0) {
       const latest = readFileSafe(path.join(journalDir, journals[0]));
-      if (latest) { console.log(`--- Journal (${journals[0].replace('.md', '')}) ---`); console.log(latest); }
+      if (latest) {
+        out += `--- Journal (${journals[0].replace('.md', '')}) ---\n`;
+        out += latest + '\n';
+      }
     }
   }
 
   // Artifacts
   const artifacts = readFileSafe(path.join(dir, 'artifacts', 'INDEX.md'));
-  if (artifacts) { console.log('--- Artifacts ---'); console.log(artifacts); }
+  if (artifacts) { out += '--- Artifacts ---\n'; out += artifacts + '\n'; }
+
+  return out;
+}
+
+// Extract spec Goal section, or fall back to frontmatter + next 20 lines
+function extractSpecGoal(specText) {
+  if (!specText) return '';
+  const goalMatch = specText.match(/(^|\n)## Goal\s*\n([\s\S]*?)(?=\n## |\n# |$)/);
+  if (goalMatch) {
+    return '## Goal\n' + goalMatch[2].trim() + '\n';
+  }
+  // Fallback: frontmatter/title + next 20 lines
+  const lines = specText.split('\n');
+  return lines.slice(0, 22).join('\n') + '\n';
+}
+
+function extractBlockersSection(contextText) {
+  if (!contextText) return '';
+  const m = contextText.match(/(^|\n)## Blockers\s*\n([\s\S]*?)(?=\n## |\n# |$)/);
+  if (!m) return '';
+  return '## Blockers\n' + m[2].trimEnd() + '\n';
+}
+
+function extractLatestDecision(contextText) {
+  if (!contextText) return '';
+  const m = contextText.match(/(^|\n)## Decisions\s*\n([\s\S]*?)(?=\n## |\n# |$)/);
+  if (!m) return '';
+  const body = m[2].trim();
+  const firstBullet = body.split(/\n(?=- )/)[0];
+  return firstBullet ? firstBullet.trim() + '\n' : '';
+}
+
+function extractLatestJournalHeadline(journalText) {
+  if (!journalText) return '';
+  const lines = journalText.split('\n');
+  // Take first non-empty heading + up to 3 following lines
+  const result = [];
+  let started = false;
+  let taken = 0;
+  for (const line of lines) {
+    if (!started && line.trim() === '') continue;
+    if (!started) { result.push(line); started = true; continue; }
+    if (taken >= 3) break;
+    result.push(line);
+    taken++;
+  }
+  return result.join('\n') + '\n';
+}
+
+function extractPlanUnresolvedTop(planText, n) {
+  if (!planText) return [];
+  const unresolved = [];
+  for (const line of planText.split('\n')) {
+    if (/^- \[ \]/.test(line.trim()) || /^\s*- \[ \]/.test(line)) {
+      unresolved.push(line);
+      if (unresolved.length >= n) break;
+    }
+  }
+  return unresolved;
+}
+
+function truncateLines(text, maxLines, maxChars, sectionLabel) {
+  if (!text) return { text: '', truncatedLines: 0 };
+  const lines = text.split('\n');
+  let out = [];
+  let chars = 0;
+  let truncated = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (out.length >= maxLines || chars + lines[i].length + 1 > maxChars) {
+      truncated = lines.length - i;
+      break;
+    }
+    out.push(lines[i]);
+    chars += lines[i].length + 1;
+  }
+  let result = out.join('\n');
+  if (truncated > 0) {
+    result += `\n… [truncated: ${truncated} more lines — rerun with --view=full]`;
+  }
+  return { text: result, truncatedLines: truncated };
+}
+
+function renderResumeSummary(task, index, dir) {
+  const header = `=== Loading previous work: ${task.title} [${task.id}] ===\n(view=summary — use --view=full for complete dump)\n`;
+
+  const specRaw = readFileSafe(path.join(dir, 'spec.md')) || '';
+  const planRaw = readFileSafe(path.join(dir, 'plan.md')) || '';
+  const contextRaw = readFileSafe(path.join(dir, 'context.md')) || '';
+
+  // Latest journal
+  let latestJournalText = '';
+  let latestJournalName = '';
+  const journalDir = path.join(dir, 'journal');
+  if (fs.existsSync(journalDir)) {
+    const journals = fs.readdirSync(journalDir).filter(f => f.endsWith('.md')).sort().reverse();
+    if (journals.length > 0) {
+      latestJournalText = readFileSafe(path.join(journalDir, journals[0])) || '';
+      latestJournalName = journals[0].replace('.md', '');
+    }
+  }
+  const artifactsRaw = readFileSafe(path.join(dir, 'artifacts', 'INDEX.md')) || '';
+
+  // Build PROTECTED content first
+  const blockersSection = extractBlockersSection(contextRaw);
+  const unresolvedTop = extractPlanUnresolvedTop(planRaw, 5);
+  const latestDecision = extractLatestDecision(contextRaw);
+  const latestJournalHeadline = extractLatestJournalHeadline(latestJournalText);
+
+  const protectedBlock = [];
+  if (blockersSection) {
+    protectedBlock.push('--- Protected: Blockers ---');
+    protectedBlock.push(blockersSection);
+  }
+  if (unresolvedTop.length > 0) {
+    protectedBlock.push('--- Protected: Unresolved Plan (top 5) ---');
+    protectedBlock.push(unresolvedTop.join('\n'));
+    protectedBlock.push('');
+  }
+  if (latestDecision) {
+    protectedBlock.push('--- Protected: Latest Decision ---');
+    protectedBlock.push(latestDecision);
+  }
+  if (latestJournalHeadline) {
+    protectedBlock.push(`--- Protected: Latest Journal Headline${latestJournalName ? ' (' + latestJournalName + ')' : ''} ---`);
+    protectedBlock.push(latestJournalHeadline);
+  }
+  const protectedText = protectedBlock.join('\n');
+  const protectedChars = protectedText.length;
+
+  // Cap overflow invariant: protected content alone exceeds cap
+  if (protectedChars > HARD_CHAR_CAP) {
+    process.stderr.write(`[lake] cap exceeded by protected content: ${protectedChars} chars\n`);
+    return header + protectedText + (protectedText.endsWith('\n') ? '' : '\n');
+  }
+
+  // Non-protected sections, built within budgets
+  let remaining = HARD_CHAR_CAP - header.length - protectedChars;
+  const sections = [];
+
+  // Spec (Goal or fallback)
+  const specGoal = extractSpecGoal(specRaw);
+  if (specGoal) {
+    const [maxL, maxC] = RESUME_SECTION_BUDGETS.spec;
+    const budgetC = Math.min(maxC, Math.max(0, remaining));
+    const { text } = truncateLines(specGoal.trimEnd(), maxL, budgetC, 'spec');
+    if (text) {
+      const block = `--- Spec (Goal) ---\n${text}\n`;
+      if (block.length <= remaining) {
+        sections.push(block);
+        remaining -= block.length;
+      }
+    }
+  }
+
+  // Plan resolved (top 10)
+  const resolvedLines = [];
+  for (const line of planRaw.split('\n')) {
+    if (/^- \[x\]/.test(line.trim()) || /^\s*- \[x\]/.test(line)) {
+      resolvedLines.push(line);
+      if (resolvedLines.length >= 10) break;
+    }
+  }
+  if (resolvedLines.length > 0) {
+    const [maxL, maxC] = RESUME_SECTION_BUDGETS.plan_resolved;
+    const budgetC = Math.min(maxC, Math.max(0, remaining));
+    const { text } = truncateLines(resolvedLines.join('\n'), maxL, budgetC, 'plan_resolved');
+    if (text) {
+      const block = `--- Plan (recent resolved) ---\n${text}\n`;
+      if (block.length <= remaining) {
+        sections.push(block);
+        remaining -= block.length;
+      }
+    }
+  }
+
+  // Context non-blocker (Decisions + other sections)
+  const contextNonBlocker = contextRaw.replace(/(^|\n)## Blockers\s*\n[\s\S]*?(?=\n## |\n# |$)/, '').trim();
+  if (contextNonBlocker) {
+    const [maxL, maxC] = RESUME_SECTION_BUDGETS.context;
+    const budgetC = Math.min(maxC, Math.max(0, remaining));
+    const { text } = truncateLines(contextNonBlocker, maxL, budgetC, 'context_non_blocker');
+    if (text) {
+      const block = `--- Context (non-blocker) ---\n${text}\n`;
+      if (block.length <= remaining) {
+        sections.push(block);
+        remaining -= block.length;
+      }
+    }
+  }
+
+  // Journal tail (after headline)
+  if (latestJournalText && latestJournalText.length > latestJournalHeadline.length) {
+    const tail = latestJournalText.slice(latestJournalHeadline.length).trim();
+    if (tail) {
+      const [maxL, maxC] = RESUME_SECTION_BUDGETS.journal_head;
+      const budgetC = Math.min(maxC, Math.max(0, remaining));
+      const { text } = truncateLines(tail, maxL, budgetC, 'journal_tail');
+      if (text) {
+        const block = `--- Journal tail (${latestJournalName}) ---\n${text}\n`;
+        if (block.length <= remaining) {
+          sections.push(block);
+          remaining -= block.length;
+        }
+      }
+    }
+  }
+
+  // Artifacts
+  if (artifactsRaw) {
+    const [maxL, maxC] = RESUME_SECTION_BUDGETS.artifacts;
+    const budgetC = Math.min(maxC, Math.max(0, remaining));
+    const { text } = truncateLines(artifactsRaw.trim(), maxL, budgetC, 'artifacts');
+    if (text) {
+      const block = `--- Artifacts ---\n${text}\n`;
+      if (block.length <= remaining) {
+        sections.push(block);
+        remaining -= block.length;
+      }
+    }
+  }
+
+  return header + protectedText + (protectedText && !protectedText.endsWith('\n') ? '\n' : '') + sections.join('');
+}
+
+function renderResumeMinimal(task, index, dir) {
+  let out = '';
+  out += `=== Loading previous work: ${task.title} [${task.id}] ===\n(view=minimal)\n`;
+  const specRaw = readFileSafe(path.join(dir, 'spec.md')) || '';
+  const specLines = specRaw.split('\n').slice(0, 3).join('\n');
+  if (specLines.trim()) {
+    out += '--- Spec (first 3 lines) ---\n' + specLines + '\n';
+  }
+  const planRaw = readFileSafe(path.join(dir, 'plan.md')) || '';
+  const unresolved = extractPlanUnresolvedTop(planRaw, 5);
+  if (unresolved.length > 0) {
+    out += '--- Unresolved Plan (top 5) ---\n' + unresolved.join('\n') + '\n';
+  }
+  return out;
+}
+
+function renderResumeFiles(task, index, dir) {
+  let out = '';
+  out += `=== Loading previous work: ${task.title} [${task.id}] ===\n(view=files)\n`;
+  const files = [];
+  for (const f of ['spec.md', 'plan.md', 'context.md']) {
+    const c = readFileSafe(path.join(dir, f));
+    if (c) files.push(`${f} (${c.split('\n').length} lines)`);
+  }
+  const journalDir = path.join(dir, 'journal');
+  if (fs.existsSync(journalDir)) {
+    const journals = fs.readdirSync(journalDir).filter(f => f.endsWith('.md')).sort();
+    for (const j of journals) {
+      const c = readFileSafe(path.join(journalDir, j));
+      if (c) files.push(`journal/${j} (${c.split('\n').length} lines)`);
+    }
+  }
+  const artifacts = readFileSafe(path.join(dir, 'artifacts', 'INDEX.md'));
+  if (artifacts) files.push(`artifacts/INDEX.md (${artifacts.split('\n').length} lines)`);
+  out += files.map(f => '- ' + f).join('\n') + '\n';
+  return out;
 }
 
 function cmdUpsert(jsonStr) {
@@ -345,24 +861,36 @@ function cmdDone(query) {
   console.log(`Done: ${task.title} [${task.id}]`);
 }
 
-function cmdSearch(keyword) {
+function cmdSearch(rawArgs) {
+  const { view, limit, positional } = parseFlags('search', rawArgs);
+  const keyword = positional.join(' ');
   const index = readIndex();
+  switch (view) {
+    case 'default':    process.stdout.write(renderSearchV0ByteIdentical(keyword, index)); return;
+    case 'compressed': process.stdout.write(renderSearchCompressed(keyword, index, limit)); return;
+    case 'full':       process.stdout.write(renderSearchFull(keyword, index)); return;
+  }
+}
+
+// v0 byte-identical — preserves original cmdSearch console.log behavior.
+function renderSearchV0ByteIdentical(keyword, index) {
+  let out = '';
   const results = [];
 
   // Search by tag first
   const tagQuery = keyword.replace(/^#/, '');
   const tagMatches = index.filter(t => t.tags && t.tags.some(tag => tag.toLowerCase().includes(tagQuery.toLowerCase())));
   if (tagMatches.length > 0) {
-    console.log(`Tag matches for "#${tagQuery}":\n`);
+    out += `Tag matches for "#${tagQuery}":\n\n`;
     tagMatches.forEach(t => {
-      console.log(`  [${t.status}] [${t.id}] ${t.title} (${t.project}) — ${t.tags.map(x => '#' + x).join(' ')}\n`);
+      out += `  [${t.status}] [${t.id}] ${t.title} (${t.project}) — ${t.tags.map(x => '#' + x).join(' ')}\n\n`;
     });
   }
 
   // Search file contents
   const searchDir = (base, status) => {
     if (!fs.existsSync(base)) return;
-    for (const slug of fs.readdirSync(base)) {
+    for (const slug of fs.readdirSync(base).sort()) {
       const dir = path.join(base, slug);
       if (!fs.statSync(dir).isDirectory()) continue;
       for (const file of ['spec.md', 'plan.md', 'context.md']) {
@@ -380,16 +908,73 @@ function cmdSearch(keyword) {
   searchDir(DONE_DIR, 'done');
 
   if (results.length > 0) {
-    console.log(`"${keyword}" file matches:\n`);
+    out += `"${keyword}" file matches:\n\n`;
     results.forEach(r => {
-      console.log(`  [${r.status}] ${r.slug}/${r.file}:${r.line}`);
-      console.log(`    "${r.text}"\n`);
+      out += `  [${r.status}] ${r.slug}/${r.file}:${r.line}\n`;
+      out += `    "${r.text}"\n\n`;
     });
   }
 
   if (tagMatches.length === 0 && results.length === 0) {
-    console.log(`No results for "${keyword}"`);
+    out += `No results for "${keyword}"\n`;
   }
+  return out;
+}
+
+function renderSearchCompressed(keyword, index, limit) {
+  let out = '';
+  const cap = limit || SEARCH_MAX_RESULTS;
+  const tagQuery = keyword.replace(/^#/, '');
+  const tagMatches = index.filter(t => t.tags && t.tags.some(tag => tag.toLowerCase().includes(tagQuery.toLowerCase())));
+  if (tagMatches.length > 0) {
+    out += `Tag matches for "#${tagQuery}":\n`;
+    tagMatches.forEach(t => {
+      out += `  [${t.status}] [${t.id}] ${t.title} (${t.project})\n`;
+    });
+    out += '\n';
+  }
+
+  const results = [];
+  const searchDir = (base, status) => {
+    if (!fs.existsSync(base)) return;
+    for (const slug of fs.readdirSync(base).sort()) {
+      const dir = path.join(base, slug);
+      if (!fs.statSync(dir).isDirectory()) continue;
+      for (const file of ['spec.md', 'plan.md', 'context.md']) {
+        const content = readFileSafe(path.join(dir, file));
+        if (!content) continue;
+        content.split('\n').forEach((line, i) => {
+          if (line.toLowerCase().includes(keyword.toLowerCase())) {
+            results.push({ status, slug, file, line: i + 1, text: line.trim() });
+          }
+        });
+      }
+    }
+  };
+  searchDir(INPROGRESS_DIR, 'inprogress');
+  searchDir(DONE_DIR, 'done');
+
+  if (results.length > 0) {
+    out += `"${keyword}" file matches:\n`;
+    const shown = results.slice(0, cap);
+    shown.forEach(r => {
+      const text = r.text.length > 80 ? r.text.slice(0, 77) + '...' : r.text;
+      out += `  [${r.status}] ${r.slug}/${r.file}:${r.line} "${text}"\n`;
+    });
+    if (results.length > cap) {
+      out += `… +${results.length - cap} more — narrow query or use --view=full\n`;
+    }
+  }
+
+  if (tagMatches.length === 0 && results.length === 0) {
+    out += `No results for "${keyword}"\n`;
+  }
+  return out;
+}
+
+function renderSearchFull(keyword, index) {
+  // Same as v0 byte-identical; explicit alias with no cap.
+  return renderSearchV0ByteIdentical(keyword, index);
 }
 
 function cmdLink(parentQuery, childQuery) {
@@ -599,7 +1184,7 @@ function cmdRebuild() {
   const index = [];
   const scanDir = (base, status) => {
     if (!fs.existsSync(base)) return;
-    for (const slug of fs.readdirSync(base)) {
+    for (const slug of fs.readdirSync(base).sort()) {
       const dir = path.join(base, slug);
       if (!fs.statSync(dir).isDirectory()) continue;
       const spec = readFileSafe(path.join(dir, 'spec.md'));
@@ -632,17 +1217,37 @@ function cmdRebuild() {
   index.forEach(t => console.log(`  [${t.id}] ${t.slug} (${t.status})`));
 }
 
+function cmdSummary(query) {
+  const index = readIndex();
+  const task = findTask(index, query);
+  const dir = taskDir(task);
+  const plan = readFileSafe(path.join(dir, 'plan.md')) || '';
+  const done = (plan.match(/^- \[x\]/gm) || []).length;
+  const total = (plan.match(/^- \[[ x]\]/gm) || []).length;
+  const tags = task.tags ? task.tags.map(t => '#' + t).join(' ') : '';
+  process.stdout.write(`[${task.id}] ${task.title} (${task.project}) — updated: ${task.updated} — plan: ${done}/${total}${tags ? ' — tags: ' + tags : ''}\n`);
+}
+
+function cmdVersion() {
+  let gitHash = 'unknown';
+  try {
+    const { execSync } = require('child_process');
+    gitHash = execSync('git rev-parse --short HEAD', { cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || 'unknown';
+  } catch { /* git 실패해도 OK */ }
+  process.stdout.write(`lake-cli v${LAKE_CLI_VERSION} (${gitHash})\n`);
+}
+
 // --- Main ---
 
 const [,, cmd, ...args] = process.argv;
 
 switch (cmd) {
-  case 'list':    cmdList(); break;
+  case 'list':    cmdList(args); break;
   case 'find':    cmdFind(args[0]); break;
-  case 'resume':  cmdResume(args[0]); break;
+  case 'resume':  cmdResume(args); break;
   case 'upsert':  cmdUpsert(args[0]); break;
   case 'done':    cmdDone(args[0]); break;
-  case 'search':  cmdSearch(args.join(' ')); break;
+  case 'search':  cmdSearch(args); break;
   case 'rebuild': cmdRebuild(); break;
   case 'link':    cmdLink(args[0], args[1]); break;
   case 'unlink':  cmdUnlink(args[0], args[1]); break;
@@ -653,7 +1258,13 @@ switch (cmd) {
   case 'untag':   cmdUntag(args[0], ...args.slice(1)); break;
   case 'block':   cmdBlock(args[0], args[1]); break;
   case 'unblock': cmdUnblock(args[0], args[1]); break;
+  case 'summary': cmdSummary(args[0]); break;
+  case 'version': cmdVersion(); break;
+  case 'help':
+  case '-h':
+  case '--help':
+    process.stdout.write(USAGE); break;
   default:
-    console.log('Usage: lake-cli.js <list|find|resume|upsert|done|search|rebuild> [args]');
+    process.stderr.write(USAGE);
     process.exit(1);
 }

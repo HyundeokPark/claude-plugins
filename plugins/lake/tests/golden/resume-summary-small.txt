@@ -1,0 +1,83 @@
+=== Loading previous work: Small Task Fixture [457cda] ===
+(view=summary — use --view=full for complete dump)
+--- Protected: Blockers ---
+## Blockers
+- Need to confirm TZ=UTC is sufficient for deterministic snapshot output or if LAKE_NOW env var must also be wired into today() before capturing golden files.
+- Waiting for architect review on whether hybrid cap overflow should emit to stderr or a separate log file.
+- The current lake-cli.js uses emoji in console output (📋, 🔗, 🚫) — need to verify these render consistently across macOS and Linux terminal emulators for byte-identical comparison.
+
+--- Protected: Unresolved Plan (top 5) ---
+- [ ] Implement renderResumeSummary() with DROP_PRIORITY ordering
+- [ ] Add spec.md Goal-section fallback (frontmatter + 20 lines)
+- [ ] Wire --view=summary opt-in path through cmdResume
+- [ ] Create tests/fixtures/ directory structure
+- [ ] Write setup-fixtures.sh and capture-v0-golden.sh
+
+--- Protected: Latest Decision ---
+- Use FLAG_SPEC allowlist approach to reject unknown flags with exit 2.
+
+--- Protected: Latest Journal Headline (2026-04-14) ---
+# Journal: 2026-04-14
+
+## Summary
+
+--- Spec (Goal) ---
+## Goal
+Implement a lightweight token budget for the lake resume command.
+Ensure protected sections (blockers, unresolved tasks) are never truncated.
+Add a --view flag to opt-in to compressed output.
+Verify byte-identical output with v0 golden baseline.
+Write snapshot tests to catch regressions automatically.
+--- Plan (recent resolved) ---
+- [x] Read lake-cli.js and understand cmdResume structure
+- [x] Identify PROTECTED_SECTIONS requirements from plan doc
+- [x] Define FLAG_SPEC constant with allowlist per command
+- [x] Implement parseFlags(cmd, args) with conflict detection
+- [x] Add VIEW_DEFAULTS_V1 constants block
+- [x] Write renderResumeFull() extracting v0 byte-identical logic
+- [x] Add RESUME_SECTION_BUDGETS and HARD_CHAR_CAP constants
+- [x] Implement hybrid budget allocation loop
+- [x] Handle protected-only overflow: relax cap + emit stderr warning
+- [x] Write unit test for parseFlags unknown flag → exit 2
+--- Context (non-blocker) ---
+# Context: Small Task Fixture
+
+- **Branch**: feature/lake-token-diet-v1
+- **Files**: scripts/lake-cli.js, tests/fixtures/, tests/golden/
+
+## Decisions
+
+- Use FLAG_SPEC allowlist approach to reject unknown flags with exit 2.
+- VIEW_DEFAULTS_V1 sets resume='full' to preserve v0 byte-identical default.
+- Golden baseline captured at SHA c3f4569 before any cli.js modifications.
+--- Journal tail (2026-04-14) ---
+Explored lake-cli.js structure and identified all sections that need modification for Phase 5 test infrastructure.
+
+## Work Done
+
+- Read lake-cli.js top-to-bottom and annotated each function.
+- Identified cmdResume (L146-222) as the primary target for hybrid budget.
+- Confirmed generateHash uses SHA1 prefix matching the plan spec.
+- Verified LAKE_DIR uses process.env.HOME — confirms HOME override works for test isolation.
+- Listed all 4 fixture types needed per the Phase 5 spec.
+- Created tests/fixtures/ directory structure.
+
+## Decisions
+
+- Use HOME env var override rather than LAKE_HOME for isolation (simpler, compatible with current cli).
+- Capture golden baseline before any cli.js changes (current HEAD = c3f4569).
+
+## Next
+
+- Write fixture files (spec/plan/context/journal/artifacts).
+- Generate index.json with 35 entries (30 inprogress + 5 done).
+… [truncated: 7 more lines — rerun with --view=full]
+--- Artifacts ---
+# Artifacts Index: Small Task Fixture
+
+## Output Files
+
+| File | Description | Path |
+|------|-------------|------|
+| flag-spec.md | FLAG_SPEC constant design notes | /tmp/lake-token-diet/flag-spec.md |
+| golden-capture.log | Output of capture-v0-golden.sh run | /tmp/lake-token-diet/golden-capture.log |

@@ -12,6 +12,10 @@ Save work progress to `~/.claude/prd-lake/` per task, so you can instantly resto
 
 **Design philosophy:** Make `/lake save` as frictionless as Ctrl+S.
 
+> **Do NOT Read `skills/lake/references/*.md` unless the user invokes one of:**
+> `link`, `unlink`, `tree`, `relate`, `unrelate`, `tag`, `untag`, `block`, `unblock`, or `save --parent`.
+> Each reference file declares `autoload: false` in its frontmatter and must be opened on demand only.
+
 ## Folder Structure
 
 ```
@@ -87,310 +91,72 @@ node ~/.claude/prd-lake/lake-cli.js <command> [args]
 
 ### `/lake save "title"`
 
-Create a task folder and save spec/plan/context.
+Create or update a task folder and save spec/plan/context.
 
-**Steps:**
+1. Generate slug; auto-extract Project (git root) and Branch
+2. Check if folder exists → update (confirm) or create new
+3. AI drafts spec.md / plan.md / context.md from current session
+4. AskUserQuestion: "Saving with this content. Anything to change?"
+5. Write files; run `lake-cli.js upsert` to update index.json
+6. Append to `journal/{today}.md`
+7. AskUserQuestion: "Any artifacts to record? (path or skip)"
 
-1. Generate slug from title (spaces→hyphens, lowercase, strip special chars)
-2. Auto-extract:
-   - Project: `basename $(git rev-parse --show-toplevel 2>/dev/null || basename $PWD)`
-   - Branch: `git branch --show-current 2>/dev/null || "no-branch"`
-3. Check if `~/.claude/prd-lake/inprogress/{slug}/` exists
-   - Exists: update existing files (confirm overwrite)
-   - New: create folder
-4. AI drafts from current session conversation:
-   - `spec.md`: Goal, background, requirements
-   - `plan.md`: Checklist (`- [x]` done, `- [ ]` pending)
-   - `context.md`: Branch, modified files, decisions
-5. AskUserQuestion to confirm draft:
-   - "Saving with this content. Anything to change?"
-   - Proceed / Edit
-6. Write files
-7. Run `node ~/.claude/prd-lake/lake-cli.js upsert '<json>'` to update index.json (with id, slug, title, project, status, created, updated)
-8. Append to `journal/{today}.md`
-9. AskUserQuestion: "Any artifacts (files/directories) to record? (path or skip)"
-   - If path provided: create/update `artifacts/INDEX.md` with entry (path + auto-describe or prompt for description)
-   - If "skip" or empty: proceed without artifacts
-
-**spec.md template:**
-```markdown
-# {title}
-- **Project**: {project}
-- **Created**: {yyyy-MM-dd HH:mm}
-- **Updated**: {yyyy-MM-dd HH:mm}
-
-## Goal
-{One-line goal}
-
-## Background
-{Why this task exists}
-
-## Requirements
-{Requirements list}
-```
-
-**plan.md template:**
-```markdown
-# Plan
-
-## Checklist
-- [x] Completed item
-- [ ] Pending item
-
-## Notes
-{Implementation notes}
-```
-
-**context.md template:**
-```markdown
-# Context
-- **Branch**: {branch}
-- **Modified Files**:
-  - {file1}
-  - {file2}
-
-## Decisions
-- {Decision 1}: {reason}
-
-## Blockers
-- {Current blockers}
-```
-
-**journal/{date}.md template:**
-```markdown
-# {yyyy-MM-dd}
-
-## Work Done
-- {time} {what was done}
-
-## Notes
-- {misc notes}
-```
+Templates → see `references/templates.md`. `--parent` flag → see `references/epic-graph.md`.
 
 ### `/lake list`
 
-Show inprogress + done tasks. **Bash 1회로 끝낸다.**
-
-**Steps:**
+**Bash 1회로 끝낸다.**
 
 1. Run: `node ~/.claude/prd-lake/lake-cli.js list`
-2. **Echo the captured stdout verbatim inside a fenced code block in your text reply** — Bash tool output is NOT visible to the user, so the assistant MUST paste it back as a text message. Do not reformat, do not summarize, do not omit rows.
-
-That's it. No Read, no Glob. CLI stdout → code block in text reply.
+2. Echo captured stdout verbatim inside a fenced code block in your text reply. No Read, no Glob.
 
 ### `/lake resume [name-or-hash]`
 
-Load previous task context into current session. **Bash 1회로 끝낸다.**
+**Bash 1회로 끝낸다.**
 
-**Steps:**
-
-1. No argument:
-   - Run `node ~/.claude/prd-lake/lake-cli.js list` to show options
-   - AskUserQuestion to select (hash or name)
-2. With argument (hash prefix or slug substring):
-   - Run: `node ~/.claude/prd-lake/lake-cli.js resume <arg>`
-   - This prints spec+plan+context+journal+artifacts in one shot
-3. **Echo the captured stdout verbatim in your text reply** (inside a fenced code block) — Bash output is not visible to the user.
-4. Update spec.md Updated timestamp + run `lake-cli.js upsert` to sync index
+1. No arg: run `list`, AskUserQuestion to select
+2. With arg: `lake-cli.js resume <arg>` → Echo captured stdout verbatim inside a fenced code block in your text reply
+3. Update spec.md Updated timestamp + `lake-cli.js upsert`
 
 ### `/lake done [name-or-hash]`
 
-Mark task as completed. **Bash 1회로 끝낸다.**
+**Bash 1회로 끝낸다.**
 
-**Steps:**
-
-1. No argument:
-   - Run `node ~/.claude/prd-lake/lake-cli.js list` to show options
-   - AskUserQuestion to select
-2. With argument:
-   - Run: `node ~/.claude/prd-lake/lake-cli.js done <arg>`
-   - This moves the folder and updates index in one shot
-3. Print completion confirmation
+1. No arg: run `list`, AskUserQuestion to select
+2. With arg: `lake-cli.js done <arg>` → print confirmation
 
 ### `/lake search "keyword"`
 
-Search lake files for keyword. **Bash 1회로 끝낸다.**
-
-**Steps:**
-
-1. Run: `node ~/.claude/prd-lake/lake-cli.js search <keyword>`
-2. **Echo the captured stdout verbatim in your text reply** (inside a fenced code block) — Bash output is not visible to the user.
+1. Run: `node ~/.claude/prd-lake/lake-cli.js search <keyword>` → Echo captured stdout verbatim inside a fenced code block in your text reply
 
 ### `/lake journal [name-or-hash]`
 
-Add today's journal entry to a task.
-
-**Steps:**
-
-1. No argument:
-   - Run `node ~/.claude/prd-lake/lake-cli.js list` to show options
-   - AskUserQuestion to select
-2. With argument:
-   - Run `node ~/.claude/prd-lake/lake-cli.js find <arg>` to resolve task slug/path
-3. If `journal/{today}.md` exists → Edit, else → Write
-4. AskUserQuestion for today's work
-5. Append to journal file
+1. No arg: run `list`, AskUserQuestion to select
+2. Resolve path via `lake-cli.js find <arg>`
+3. Edit or Write `journal/{today}.md`; AskUserQuestion for today's work; append
 
 ### `/lake artifacts [name-or-hash]`
 
-Show or add artifacts to a task.
+1. No arg: run `list`, AskUserQuestion to select
+2. Resolve via `lake-cli.js find <arg>`; create `artifacts/INDEX.md` if missing
+3. Display current artifacts; AskUserQuestion: "Add new artifact? (path+desc or 'done')"
 
-**Steps:**
+Artifact INDEX.md template → see `references/templates.md`.
 
-1. No argument:
-   - Run `node ~/.claude/prd-lake/lake-cli.js list` to show options
-   - AskUserQuestion to select
-2. With argument:
-   - Run `node ~/.claude/prd-lake/lake-cli.js find <arg>` to resolve task
-3. If `artifacts/INDEX.md` doesn't exist → create it with the header template below
-4. Read and display current artifacts from INDEX.md:
-   ```
-   Artifacts for {task-name}:
-   {INDEX.md content}
-   ```
-5. AskUserQuestion: "Add new artifact? Enter path and description (or 'done')"
-   - If "done" or empty: finish
-   - If path+description provided: append a new row to the table in INDEX.md, then repeat step 5
+### Epic graph commands (link/unlink/tree/relate/unrelate/tag/untag/block/unblock/save --parent)
 
-**artifacts/INDEX.md template:**
-```markdown
-# Artifacts
-
-| # | Path | Description | Added |
-|---|------|-------------|-------|
-| 1 | ~/project/terraform/ | Terraform IaC for OCI ARM | 2026-04-10 |
-```
-
-When appending rows, increment `#` automatically based on the current highest row number.
-
-### `/lake link <parent> <child>`
-
-Link two tasks as parent-child (epic structure). Uses hash prefix or slug substring.
-
-**Steps:**
-
-1. Run: `node ~/.claude/prd-lake/lake-cli.js link <parent> <child>`
-2. Print confirmation
-
-**Example:**
-```
-/lake link 2f3d89 23db04
-→ Linked: [2f3d89] Oracle 인프라 ← [23db04] 자동매매
-```
-
-### `/lake unlink <parent> <child>`
-
-Remove parent-child link.
-
-**Steps:**
-
-1. Run: `node ~/.claude/prd-lake/lake-cli.js unlink <parent> <child>`
-2. Print confirmation
-
-### `/lake tree [name-or-hash]`
-
-Show epic tree hierarchy.
-
-**Steps:**
-
-1. No argument: show all epic trees
-2. With argument: find the task, walk up to root, show full tree from root
-3. Run: `node ~/.claude/prd-lake/lake-cli.js tree [arg]`
-
-**Output format:**
-```
-📋 [a1b2c3] n8n 자동화 허브 (personal-infra)
-    └─ [23db04] 자동매매 (auto-trading)
-    └─ [3415d8] 청약/임대 알림 (my-dashboard)
-```
-
-### `/lake relate <task1> <task2>`
-
-Bidirectional "relates to" link between two tasks. Both sides get the link.
-
-**Steps:**
-
-1. Run: `node ~/.claude/prd-lake/lake-cli.js relate <task1> <task2>`
-2. Print confirmation
-
-**Example:**
-```
-/lake relate 23db04 3415d8
-→ Related: [23db04] 자동매매 ↔ [3415d8] 청약/임대 알림
-```
-
-### `/lake unrelate <task1> <task2>`
-
-Remove bidirectional relates-to link.
-
-**Steps:**
-
-1. Run: `node ~/.claude/prd-lake/lake-cli.js unrelate <task1> <task2>`
-2. Print confirmation
-
-### `/lake tag <task> <tag1> [tag2...]`
-
-Add tags to a task. Tags are searchable via `/lake search #tagname`.
-
-**Steps:**
-
-1. Run: `node ~/.claude/prd-lake/lake-cli.js tag <task> <tag1> [tag2...]`
-2. Print confirmation
-
-**Example:**
-```
-/lake tag 23db04 n8n migration trading
-→ Tagged: [23db04] 자동매매 → #n8n #migration #trading
-```
-
-### `/lake untag <task> <tag1> [tag2...]`
-
-Remove tags from a task.
-
-**Steps:**
-
-1. Run: `node ~/.claude/prd-lake/lake-cli.js untag <task> <tag1> [tag2...]`
-2. Print confirmation
-
-### `/lake block <blocked> <blocker>`
-
-Mark a task as blocked by another (dependency/선행 조건). The blocked task cannot proceed until the blocker is done.
-
-**Steps:**
-
-1. Run: `node ~/.claude/prd-lake/lake-cli.js block <blocked> <blocker>`
-2. Print confirmation
-
-**Example:**
-```
-/lake block 9e2963 2f3d89
-→ Blocked: [9e2963] n8n 자동화 허브 ──blocked by──→ [2f3d89] Oracle K3s 인프라
-```
-
-Resume output shows both sides:
-- Blocked task: `🚫 Blocked by: [2f3d89] Oracle K3s 인프라`
-- Blocker task: `⏳ Blocks: [9e2963] n8n 자동화 허브`
-
-### `/lake unblock <blocked> <blocker>`
-
-Remove blocked-by dependency link.
-
-**Steps:**
-
-1. Run: `node ~/.claude/prd-lake/lake-cli.js unblock <blocked> <blocker>`
-2. Print confirmation
-
-### `/lake save "title"` with `--parent`
-
-When saving with `--parent <hash>`, automatically link the new task as a child of the parent.
-
-**Additional step after step 7 (upsert):**
-- If `--parent` provided: Run `node ~/.claude/prd-lake/lake-cli.js link <parent-hash> <new-task-hash>`
+Read `references/epic-graph.md` only when one of these commands is invoked.
 
 ## Notes
 
+See `references/advanced.md` for full notes and advanced usage.
+
 - Lake file total line limit: 200 lines (warn if exceeded)
-- Non-git directory save: fallback Project to dirname
 - Re-save same task name: update existing files (no new folder)
-- `/lake save` should be minimal friction — require minimum user input
-- Artifacts section in `/lake resume` is shown only when `artifacts/INDEX.md` exists
+- `/lake save` should be minimal friction
+
+## References (lazy-load when needed)
+
+- `/Users/hyundeokpark/.claude/plugins/marketplaces/hpotter-plugins/plugins/lake/skills/lake/references/templates.md` — spec/plan/context/journal/artifacts 템플릿
+- `/Users/hyundeokpark/.claude/plugins/marketplaces/hpotter-plugins/plugins/lake/skills/lake/references/epic-graph.md` — link/unlink/tree/relate/unrelate/tag/untag/block/unblock, save --parent
+- `/Users/hyundeokpark/.claude/plugins/marketplaces/hpotter-plugins/plugins/lake/skills/lake/references/advanced.md` — Notes, advanced usage

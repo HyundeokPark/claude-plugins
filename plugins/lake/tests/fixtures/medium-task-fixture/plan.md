@@ -1,0 +1,44 @@
+# Plan: Medium Task Fixture
+
+## Checklist
+
+- [x] Review existing campaign list component architecture
+- [x] Analyze current API response shape for /v1/campaigns
+- [x] Design cursor-based pagination schema with backend team
+- [x] Review Figma specs for new filter panel layout
+- [x] Set up React Query with campaign list query key factory
+- [x] Implement useCampaignList hook with cursor pagination
+- [x] Add URL search params sync for filter state
+- [x] Build CampaignFilterPanel component with status dropdown
+- [x] Build date range picker integrated with filter panel
+- [x] Add project filter dropdown with search
+- [x] Implement skeleton loader for campaign rows
+- [x] Create empty state component with CTA button
+- [x] Add debounce (300ms) to filter change handlers
+- [x] Implement cursor navigation (next/prev page buttons)
+- [x] Write Storybook stories for skeleton and empty states
+- [x] Add unit tests for useCampaignList hook
+- [x] Add unit tests for URL sync logic
+- [x] Write E2E test for pagination navigation flow
+- [x] Write E2E test for filter + URL shareability
+- [x] Performance test: measure TTI on 3G throttle profile
+- [ ] Fix keyboard navigation for filter dropdowns (a11y)
+- [ ] Add scroll position preservation on back navigation
+- [ ] Implement campaign count badge in page header
+- [ ] Add loading error state with retry button
+- [ ] Write E2E test for error state and retry
+- [ ] Performance: optimize re-renders with React.memo
+- [ ] Add integration test for cursor key decoding edge cases
+- [ ] Update API client types for /v2/campaigns response
+- [ ] Update shared UI library with skeleton component export
+- [ ] Code review + address feedback
+- [ ] QA sign-off on filter combinations
+- [ ] Deploy to staging and run smoke tests
+- [ ] Update ADR for pagination strategy decision
+- [ ] Final performance measurement on staging
+- [ ] Merge to main and monitor error rates
+- [ ] Close Jira ticket WP-4320 and link WP-4321
+- [ ] Write release note entry for campaign list pagination
+- [ ] Update Confluence page for frontend architecture
+- [ ] Notify stakeholders of feature availability
+- [ ] Retrospective note on React Query adoption

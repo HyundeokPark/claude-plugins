@@ -1,0 +1,1 @@
+Conflicting flags: --view=summary --view=full. Pick one of: --view=summary, --view=full, --view=minimal, --view=files (aliases: --full --minimal --files --summary).

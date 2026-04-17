@@ -1,0 +1,84 @@
+=== Loading previous work: Medium Task Fixture [e515a0] ===
+(view=summary — use --view=full for complete dump)
+--- Protected: Blockers ---
+## Blockers
+- Figma spec for the filter panel has not been finalized — waiting for design review from @ux-lead.
+- /v2/campaigns endpoint returns 404 in staging — backend ticket WP-4315 must deploy first.
+- Keyboard navigation (a11y) for the date range picker requires custom ARIA implementation; no library solution found yet.
+
+--- Protected: Unresolved Plan (top 5) ---
+- [ ] Fix keyboard navigation for filter dropdowns (a11y)
+- [ ] Add scroll position preservation on back navigation
+- [ ] Implement campaign count badge in page header
+- [ ] Add loading error state with retry button
+- [ ] Write E2E test for error state and retry
+
+--- Protected: Latest Decision ---
+- Chose React Query over SWR: better cache invalidation primitives and devtools support.
+
+--- Protected: Latest Journal Headline (2026-04-14) ---
+# Journal: 2026-04-14
+
+## Summary
+
+--- Spec (Goal) ---
+## Goal
+Redesign the campaign list page to show pagination controls.
+Add server-side filtering by status, date range, and project.
+Integrate with the new backend API endpoint /v2/campaigns.
+Display loading skeletons while data is being fetched.
+Handle empty states gracefully with actionable CTAs.
+--- Plan (recent resolved) ---
+- [x] Review existing campaign list component architecture
+- [x] Analyze current API response shape for /v1/campaigns
+- [x] Design cursor-based pagination schema with backend team
+- [x] Review Figma specs for new filter panel layout
+- [x] Set up React Query with campaign list query key factory
+- [x] Implement useCampaignList hook with cursor pagination
+- [x] Add URL search params sync for filter state
+- [x] Build CampaignFilterPanel component with status dropdown
+- [x] Build date range picker integrated with filter panel
+- [x] Add project filter dropdown with search
+--- Context (non-blocker) ---
+# Context: Medium Task Fixture
+
+- **Branch**: feature/campaign-list-pagination-WP-4320
+- **Files**: apps/nestads-frontend/src/pages/campaigns/, packages/ui/src/components/skeleton/
+
+## Decisions
+
+- Chose React Query over SWR: better cache invalidation primitives and devtools support.
+- Cursor-based pagination selected over offset pagination: avoids page drift on concurrent inserts.
+- Filter state in URL via useSearchParams: enables shareable links without extra state management.
+- Debounce at 300ms after user testing showed 200ms felt laggy on slow connections.
+- Skeleton loader added to shared UI library rather than inline: reusable for ad group list refactor.
+- Decided not to implement virtual scrolling in this ticket — separate optimization task.
+- React.memo applied only to CampaignRow, not the filter panel (filter panel re-renders are cheap).
+
+## API Notes
+
+- /v2/campaigns returns: `{ items: [], nextCursor: string|null, totalCount: number }`
+- Cursor is base64(timestamp + ":" + lastId) — decode for display in debug tools only.
+- Filter params: status (enum), dateFrom (ISO), dateTo (ISO), projectId (UUID).
+- Empty nextCursor means last page — disable "Next" button.
+--- Journal tail (2026-04-14) ---
+Built filter panel components and skeleton loader. Wrote unit tests. Figma spec finalized by design team.
+
+## Work Done
+
+- Implemented CampaignFilterPanel with status, dateFrom, dateTo, projectId filters.
+- Added debounce (300ms) to filter change handlers using useDebouncedValue hook.
+- Built CampaignDateRangePicker component using react-day-picker (already in dependency tree).
+- Added CampaignProjectDropdown with search using existing ProjectSearchInput component.
+- Implemented SkeletonCampaignRow component — submitted to shared UI library PR.
+- Implemented CampaignEmptyState component with "Create Campaign" CTA button.
+- Wrote 12 unit tests for useCampaignList hook covering: initial load, next page, filter change, error state.
+- Wrote 8 unit tests for URL sync: filter params encode/decode, partial params, invalid params.
+- Set up Storybook stories for SkeletonCampaignRow and CampaignEmptyState.
+- Reviewed Figma spec (finalized 2026-04-14 by @ux-lead) — minor spacing adjustments needed.
+- Applied spacing adjustments from Figma review.
+
+## Decisions
+
+- SkeletonCampaignRow uses CSS animation (not Framer Motion) — lighter weight.
+… [truncated: 20 more lines — rerun with --view=full]

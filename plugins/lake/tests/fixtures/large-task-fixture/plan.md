@@ -1,0 +1,69 @@
+# Plan: Large Task Fixture
+
+## Checklist
+
+- [x] Document current topology (Kafka Streams 3.6 + RocksDB state stores)
+- [x] Profile current 1-hour tumbling window latency distribution
+- [x] Research hopping window semantics in Kafka Streams 3.6
+- [x] Research session window merge semantics and gap configuration
+- [x] Design hybrid windowing topology diagram
+- [x] Draft migration plan with 5-phase rollout strategy
+- [x] Review migration plan with team — approved 2026-04-11
+- [x] Create new topology branch: statistics-stream-hybrid-window
+- [x] Implement 15-minute hopping window aggregator
+- [x] Implement session window aggregator with 30-minute gap
+- [x] Implement window combiner that merges hopping + session results
+- [x] Add dead-letter routing for Avro schema validation failures
+- [x] Add backpressure handler triggered at 80% heap utilization
+- [x] Write unit tests for hopping window edge cases (late arrivals)
+- [x] Write unit tests for session window merge and split
+- [x] Write unit tests for dead-letter routing on malformed records
+- [x] Write unit tests for backpressure handler threshold
+- [x] Write integration test for Phase 1 dual-topology deployment
+- [x] Write integration test for Phase 2 10% traffic split
+- [x] Write automated diff checker for Phase 3 shadow validation
+- [x] Write integration test for rebalance during windowing
+- [x] Benchmark throughput: 50K events/sec sustained load test
+- [x] Benchmark P99 latency for 15-min hopping window
+- [x] Verify RocksDB block cache does not exceed 512MB under load
+- [x] Deploy Phase 1 to staging (dual topology, 0% traffic to new)
+- [x] Deploy Phase 2 to staging (10% traffic to new topology)
+- [x] Run 48-hour shadow mode validation (Phase 3) — completed 2026-04-13
+- [x] Validate diff checker: zero discrepancies in shadow mode
+- [x] Deploy Phase 4 to production: 10% traffic shift
+- [x] Monitor Phase 4 for 24 hours — consumer lag stable
+- [ ] Deploy Phase 4 second step: 50% traffic shift
+- [ ] Monitor 50% shift for 24 hours (lag, latency, error rate)
+- [ ] Deploy Phase 4 final step: 100% traffic shift
+- [ ] Monitor 100% for 72 hours before decommissioning old topology
+- [ ] Decommission old topology (Phase 5)
+- [ ] Remove old topology code from codebase
+- [ ] Update Kafka topic retention policies for old changelog topics
+- [ ] Archive benchmark results to Confluence
+- [ ] Update runbook for statistics-stream incident response
+- [ ] Update ADR-0042 with hybrid windowing decision rationale
+- [ ] Update monitoring dashboards (Grafana) for new window metrics
+- [ ] Write post-migration report for stakeholders
+- [ ] Close WP-4200 (statistics latency improvement epic)
+- [ ] Tag release v2.5.0 for statistics-stream service
+- [ ] Notify data team of new window boundary semantics
+- [ ] Verify downstream consumers handle new statistics format
+- [ ] Update SLA documentation for statistics latency guarantee
+- [ ] Retrospective on 48-hour shadow validation effectiveness
+- [ ] Schedule knowledge-sharing session on hybrid windowing
+- [ ] Archive old topology code to separate branch for reference
+- [ ] Remove feature flag ENABLE_HYBRID_WINDOW after stabilization
+- [ ] Update capacity planning doc (CPU/memory per replica)
+- [ ] Final sign-off from SRE team on production stability
+- [ ] Merge cleanup PR and update changelog
+- [ ] Update integration test suite to remove dual-topology fixtures
+- [ ] Document RocksDB tuning parameters in ops runbook
+- [ ] Final consumer lag report to stakeholders
+- [ ] Close sprint and move resolved items to Done in Jira
+- [ ] Update team wiki with lessons learned from migration
+- [ ] Confirm no alerts firing after 1 week at 100% traffic
+- [ ] Mark task as done in lake after all above complete
+- [ ] Send completion email to wider engineering team
+- [ ] Archive task files after 30 days per lake policy
+- [ ] Review and close any dependent Jira tickets
+- [ ] Update API documentation for statistics endpoint consumers

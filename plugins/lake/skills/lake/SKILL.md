@@ -105,18 +105,20 @@ Templates → see `references/templates.md`. `--parent` flag → see `references
 
 ### `/lake list`
 
-**Bash 1회로 끝낸다.**
+**Bash 1회로 끝낸다. 기본 `--view=compressed`(빠름 — 1줄/태스크).**
 
-1. Run: `node ~/.claude/prd-lake/lake-cli.js list`
+1. Run: `node ~/.claude/prd-lake/lake-cli.js list --view=compressed`
 2. Echo captured stdout verbatim inside a fenced code block in your text reply. No Read, no Glob.
+3. 전체 트리는 `--view=tree`, 오래된 항목까지 모두 보려면 `--view=all`.
 
 ### `/lake resume [name-or-hash]`
 
-**Bash 1회로 끝낸다.**
+**Bash 1회로 끝낸다. 기본 `--view=summary`(빠름 — 토큰 최소).**
 
-1. No arg: run `list`, AskUserQuestion to select
-2. With arg: `lake-cli.js resume <arg>` → Echo captured stdout verbatim inside a fenced code block in your text reply
-3. Update spec.md Updated timestamp + `lake-cli.js upsert`
+1. No arg: run `list --view=compressed`, AskUserQuestion to select
+2. With arg: `lake-cli.js resume <arg> --view=summary` → Echo captured stdout verbatim inside a fenced code block in your text reply
+3. summary로 부족하거나 사용자가 전체 내용을 요청하면 `lake-cli.js resume <arg> --view=full` 재호출
+4. Update spec.md Updated timestamp + `lake-cli.js upsert`
 
 ### `/lake done [name-or-hash]`
 
@@ -127,7 +129,8 @@ Templates → see `references/templates.md`. `--parent` flag → see `references
 
 ### `/lake search "keyword"`
 
-1. Run: `node ~/.claude/prd-lake/lake-cli.js search <keyword>` → Echo captured stdout verbatim inside a fenced code block in your text reply
+1. Run: `node ~/.claude/prd-lake/lake-cli.js search <keyword> --view=compressed` → Echo captured stdout verbatim inside a fenced code block in your text reply
+2. 결과가 잘리거나 더 보고 싶으면 `--view=full`로 재호출
 
 ### `/lake journal [name-or-hash]`
 

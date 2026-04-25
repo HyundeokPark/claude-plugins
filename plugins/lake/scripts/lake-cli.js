@@ -310,36 +310,51 @@ function renderListV0ByteIdentical(index) {
 
   const header = ['#', 'hash', '제목', '프로젝트', '날짜'];
 
+  // Terminal-width-aware ASCII table. Title column flexes to fit; other columns size to data.
+  const TERM_W = parseInt(
+    process.env.LAKE_LIST_WIDTH || process.env.COLUMNS ||
+    (process.stderr.isTTY ? process.stderr.columns : null) ||
+    (process.stdout.isTTY ? process.stdout.columns : null) || '100', 10
+  );
+  const truncDisplay = (s, w) => {
+    s = String(s == null ? '' : s);
+    if (displayWidth(s) <= w) return s;
+    let acc = '', aw = 0;
+    for (const ch of s) {
+      const cw = displayWidth(ch);
+      if (aw + cw + 1 > w) { acc += '…'; break; }
+      acc += ch;
+      aw += cw;
+    }
+    return acc;
+  };
   const renderTable = (ttl, tbl) => {
     if (tbl.length === 0) return;
     const all = [header, ...tbl];
-    const cols = header.length;
-    const colW = [];
-    for (let c = 0; c < cols; c++) {
-      colW.push(Math.max(...all.map(r => displayWidth(r[c]))));
-    }
-    const total = colW.reduce((s, w) => s + w + 3, 0) + 1; // each col: ' ' + content + ' ' + '│' ; plus opening '│'
+    // natural column widths (data-driven)
+    const wNum = Math.max(...all.map(r => displayWidth(r[0])));
+    const wHash = Math.max(...all.map(r => displayWidth(r[1])));
+    const wProj = Math.max(...all.map(r => displayWidth(r[3])));
+    const wDate = Math.max(...all.map(r => displayWidth(r[4])));
+    const wTitleNatural = Math.max(...all.map(r => displayWidth(r[2])));
+    const SEP = '  '; // 2 spaces between columns
+    const fixed = wNum + wHash + wProj + wDate + SEP.length * 4;
+    const wTitle = Math.max(20, Math.min(wTitleNatural, TERM_W - fixed));
 
-    const hLine = (l, m, r) => l + colW.map(w => '─'.repeat(w + 2)).join(m) + r;
-    const top = '┌' + '─'.repeat(total - 2) + '┐';
-    const headBot = hLine('├', '┬', '┤');
-    const rowSep = hLine('├', '┼', '┤');
-    const bot = hLine('└', '┴', '┘');
-
-    const titleLine = '│ ' + padDisplay(`${ttl}  (${tbl.length})`, total - 4) + ' │';
-    const headRow = '│' + header.map((h, i) => ' ' + padDisplay(h, colW[i]) + ' ').join('│') + '│';
-    const dataRow = (r) => '│' + r.map((v, i) => ' ' + padDisplay(v, colW[i]) + ' ').join('│') + '│';
-
-    out += top + '\n';
-    out += titleLine + '\n';
-    out += headBot + '\n';
-    out += headRow + '\n';
-    out += rowSep + '\n';
-    tbl.forEach((r, i) => {
-      out += dataRow(r) + '\n';
-      if (i < tbl.length - 1) out += rowSep + '\n';
-    });
-    out += bot + '\n';
+    out += `[ ${ttl} (${tbl.length}) ]\n`;
+    const renderRow = (r) => [
+      padDisplay(r[0], wNum),
+      padDisplay(r[1], wHash),
+      padDisplay(truncDisplay(r[2], wTitle), wTitle),
+      padDisplay(truncDisplay(r[3], wProj), wProj),
+      padDisplay(r[4], wDate),
+    ].join(SEP);
+    out += renderRow(header) + '\n';
+    out += [
+      '─'.repeat(wNum), '─'.repeat(wHash), '─'.repeat(wTitle),
+      '─'.repeat(wProj), '─'.repeat(wDate)
+    ].join(SEP) + '\n';
+    tbl.forEach(r => { out += renderRow(r) + '\n'; });
   };
 
   out += '\n';

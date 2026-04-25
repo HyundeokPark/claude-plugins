@@ -11,7 +11,7 @@
       "name": "lake",
       "source": "./plugins/lake",
       "description": "PRD Lake - Session progress persistence system. Save work progress per task (spec/plan/context/journal) and resume instantly in the next session.",
-      "version": "1.4.1",
+      "version": "1.4.2",
       "author": {
         "name": "1993hpotter"
       },

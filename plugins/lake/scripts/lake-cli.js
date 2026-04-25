@@ -806,7 +806,7 @@ function renderResumeMinimal(task, index, dir) {
 
   out += `=== ${task.title} [${task.id}] ===\n`;
 
-  const days = daysSince(task.updated);
+  const days = Math.max(0, daysSince(task.updated));
   const ago = days === 0 ? 'today' : days === 1 ? '1d ago' : `${days}d ago`;
   const tags = task.tags && task.tags.length ? ' · ' + task.tags.map(x => '#' + x).join(' ') : '';
   const project = task.project ? ` · ${task.project}` : '';
@@ -858,7 +858,7 @@ function renderResumeBrief(task, index, dir) {
   const contextRaw = readFileSafe(path.join(dir, 'context.md')) || '';
 
   let out = '';
-  const days = daysSince(task.updated);
+  const days = Math.max(0, daysSince(task.updated));
   const ago = days === 0 ? 'today' : days === 1 ? '1d ago' : `${days}d ago`;
   out += `=== ${task.title} [${task.id}] · ${task.status} · ${ago} ===\n\n`;
 
@@ -868,14 +868,17 @@ function renderResumeBrief(task, index, dir) {
     out += `## 📌 이 lake는\n${goalClean}\n\n`;
   }
 
-  const resolvedRecent = [];
+  // "최근 완료" — plan.md에서 [x] 항목을 모두 모아 마지막 3개를 보여준다.
+  // 사용자는 plan.md를 시간순(위→아래)으로 쓰는 경우가 많아, 위에서 잘라온 3개는
+  // 사실 가장 오래된 항목이다. 마지막 3개여야 진짜 최근.
+  const allResolved = [];
   for (const line of planRaw.split('\n')) {
     const trimmed = line.trim();
     if (/^- \[x\]/i.test(trimmed)) {
-      resolvedRecent.push('- ' + trimmed.replace(/^- \[x\]\s*/i, ''));
-      if (resolvedRecent.length >= 3) break;
+      allResolved.push('- ' + trimmed.replace(/^- \[x\]\s*/i, ''));
     }
   }
+  const resolvedRecent = allResolved.slice(-3);
   if (resolvedRecent.length > 0) {
     out += `## ✅ 여기까지 (최근 완료)\n${resolvedRecent.join('\n')}\n\n`;
   }

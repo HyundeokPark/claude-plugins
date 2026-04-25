@@ -113,12 +113,14 @@ Templates → see `references/templates.md`. `--parent` flag → see `references
 
 ### `/lake resume [name-or-hash]`
 
-**Bash 1회로 끝낸다. 기본 `--view=recap`(7줄 다이제스트 — Status / Last / Next 3개).**
+**Bash 1회로 끝낸다. 기본 `--view=brief`(브리핑 — Goal / 여기까지 / 이제 할 차례 / Blockers / Context).**
 
 1. No arg: run `list --view=compressed`, AskUserQuestion to select
-2. With arg: `lake-cli.js resume <arg>` → Echo captured stdout verbatim inside a fenced code block. Recap이 기본이라 view 플래그 없이 호출.
-3. recap만으로 작업 컨텍스트가 부족하다는 신호가 명시적일 때만 `--view=summary` 재호출, 그래도 부족하면 `--view=full`. 사용자가 묻기 전에 미리 summary/full로 가지 말 것 — recap이 충분한 경우가 대부분이다.
-4. Update spec.md Updated timestamp + `lake-cli.js upsert`
+2. With arg: `lake-cli.js resume <arg>` → Echo captured stdout verbatim inside a fenced code block. Brief이 기본이라 view 플래그 없이 호출.
+3. Brief은 "AI도 바로 작업 진행 가능하게" 설계됐다. 사용자가 그 task의 작업을 이어서 요청하면(구현/디버그/수정/이어서 등) brief의 컨텍스트로 곧바로 시작한다 — full을 미리 호출하지 말 것.
+4. 작업 중 journal/history 정보가 *명시적으로* 필요할 때만(예: "지난주에 왜 X 결정했지?", "이전 시도 어떻게 됐어?") `--view=full` 호출.
+5. 사용자가 명시적으로 다른 view를 요청하면(`summary`, `recap`, `minimal`, `files`) 그 플래그로 호출.
+6. Update spec.md Updated timestamp + `lake-cli.js upsert`
 
 ### `/lake done [name-or-hash]`
 

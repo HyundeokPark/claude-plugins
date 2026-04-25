@@ -138,15 +138,15 @@ function relDate(ymd) {
 const LAKE_CLI_VERSION = '1.0.0';
 
 const VIEW_DEFAULTS = {
-  resume: 'recap', // 7-line digest is now the default; opt into summary/full for depth
+  resume: 'brief', // briefing-style digest (Goal/Done/Next/Blockers/Context, no journal) — AI can act directly from this
   list:   'default',
   search: 'default',
 };
 
 const FLAG_SPEC = {
   resume: {
-    view: ['summary', 'full', 'minimal', 'recap', 'files'],
-    aliases: { '--full': 'full', '--minimal': 'minimal', '--recap': 'recap', '--files': 'files', '--summary': 'summary' },
+    view: ['brief', 'summary', 'full', 'minimal', 'recap', 'files'],
+    aliases: { '--brief': 'brief', '--full': 'full', '--minimal': 'minimal', '--recap': 'recap', '--files': 'files', '--summary': 'summary' },
   },
   list: {
     view: ['default', 'compressed', 'tree', 'all'],
@@ -484,6 +484,7 @@ function cmdResume(rawArgs) {
 
   switch (view) {
     case 'full':    process.stdout.write(renderResumeFull(task, index, dir)); return;
+    case 'brief':   process.stdout.write(renderResumeBrief(task, index, dir)); return;
     case 'summary': process.stdout.write(renderResumeSummary(task, index, dir)); return;
     case 'minimal':
     case 'recap':   process.stdout.write(renderResumeMinimal(task, index, dir)); return;
@@ -839,6 +840,77 @@ function renderResumeMinimal(task, index, dir) {
   }
 
   out += '(recap · --view=summary or --view=full for more detail)\n';
+  return out;
+}
+
+function renderResumeBrief(task, index, dir) {
+  // "오늘의 브리핑" view: AI가 컨텍스트 잡고 바로 작업할 수 있는 최소 충분 정보.
+  // Goal/Done/Next/Blockers/Context를 한 화면에 압축. 저널 history는 의도적으로 제외
+  // — 작업 진행에 필요한 건 결정/계획/제약이지 일별 로그가 아니다. journal/요약 통째가
+  // 필요하면 --view=full / --view=summary로 escalate.
+  const truncate = (s, n) => {
+    s = String(s || '').trim();
+    return s.length > n ? s.slice(0, n - 1) + '…' : s;
+  };
+
+  const specRaw = readFileSafe(path.join(dir, 'spec.md')) || '';
+  const planRaw = readFileSafe(path.join(dir, 'plan.md')) || '';
+  const contextRaw = readFileSafe(path.join(dir, 'context.md')) || '';
+
+  let out = '';
+  const days = daysSince(task.updated);
+  const ago = days === 0 ? 'today' : days === 1 ? '1d ago' : `${days}d ago`;
+  out += `=== ${task.title} [${task.id}] · ${task.status} · ${ago} ===\n\n`;
+
+  const goal = extractSpecGoal(specRaw);
+  const goalClean = goal ? goal.replace(/^##?\s*Goal\s*\n?/i, '').trim() : '';
+  if (goalClean) {
+    out += `## 📌 이 lake는\n${goalClean}\n\n`;
+  }
+
+  const resolvedRecent = [];
+  for (const line of planRaw.split('\n')) {
+    const trimmed = line.trim();
+    if (/^- \[x\]/i.test(trimmed)) {
+      resolvedRecent.push('- ' + trimmed.replace(/^- \[x\]\s*/i, ''));
+      if (resolvedRecent.length >= 3) break;
+    }
+  }
+  if (resolvedRecent.length > 0) {
+    out += `## ✅ 여기까지 (최근 완료)\n${resolvedRecent.join('\n')}\n\n`;
+  }
+
+  const unresolved = extractPlanUnresolvedTop(planRaw, 3);
+  if (unresolved.length > 0) {
+    out += `## ▶ 이제 할 차례\n${unresolved.join('\n')}\n\n`;
+  }
+
+  const blockers = extractBlockersSection(contextRaw);
+  if (blockers && blockers.trim()) {
+    const cleaned = blockers.replace(/^##?\s*Blockers\s*\n?/i, '').trim();
+    if (cleaned) {
+      out += `## 🚧 Blockers\n${cleaned}\n\n`;
+    }
+  }
+
+  const ctxLines = [];
+  const branchMatch = contextRaw.match(/^\s*[-*]?\s*\*\*?Branch\*\*?\s*:\s*(.+)$/m);
+  if (branchMatch) ctxLines.push(`Branch: ${branchMatch[1].trim()}`);
+  const decision = extractLatestDecision(contextRaw);
+  if (decision) {
+    const decClean = decision.replace(/^##?\s*[^\n]*\n?/, '').replace(/^- /, '').trim();
+    if (decClean) ctxLines.push(`Latest decision: ${truncate(decClean, 120)}`);
+  }
+  if (task.parent) ctxLines.push(`Parent: ${task.parent}`);
+  if (task.children && task.children.length) ctxLines.push(`Children: ${task.children.join(', ')}`);
+  if (task.relates && task.relates.length) ctxLines.push(`Relates: ${task.relates.join(', ')}`);
+  if (task.tags && task.tags.length) ctxLines.push(`Tags: ${task.tags.map(t => '#' + t).join(' ')}`);
+
+  if (ctxLines.length > 0) {
+    out += `## 🔗 Context\n${ctxLines.map(l => '- ' + l).join('\n')}\n\n`;
+  }
+
+  out += '(brief · --view=full for journal/history, --view=recap for one-line check)\n';
   return out;
 }
 

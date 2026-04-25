@@ -138,15 +138,15 @@ function relDate(ymd) {
 const LAKE_CLI_VERSION = '1.0.0';
 
 const VIEW_DEFAULTS = {
-  resume: 'full',     // v1: v0 byte-identical
-  list:   'default',  // v1: v0 byte-identical
-  search: 'default',  // v1: v0 byte-identical
+  resume: 'recap', // 7-line digest is now the default; opt into summary/full for depth
+  list:   'default',
+  search: 'default',
 };
 
 const FLAG_SPEC = {
   resume: {
-    view: ['summary', 'full', 'minimal', 'files'],
-    aliases: { '--full': 'full', '--minimal': 'minimal', '--files': 'files', '--summary': 'summary' },
+    view: ['summary', 'full', 'minimal', 'recap', 'files'],
+    aliases: { '--full': 'full', '--minimal': 'minimal', '--recap': 'recap', '--files': 'files', '--summary': 'summary' },
   },
   list: {
     view: ['default', 'compressed', 'tree', 'all'],
@@ -485,7 +485,8 @@ function cmdResume(rawArgs) {
   switch (view) {
     case 'full':    process.stdout.write(renderResumeFull(task, index, dir)); return;
     case 'summary': process.stdout.write(renderResumeSummary(task, index, dir)); return;
-    case 'minimal': process.stdout.write(renderResumeMinimal(task, index, dir)); return;
+    case 'minimal':
+    case 'recap':   process.stdout.write(renderResumeMinimal(task, index, dir)); return;
     case 'files':   process.stdout.write(renderResumeFiles(task, index, dir)); return;
   }
 }
@@ -792,18 +793,52 @@ function renderResumeSummary(task, index, dir) {
 }
 
 function renderResumeMinimal(task, index, dir) {
+  // Recap-style digest: title line + meta line + Last + Next. Designed to fit in
+  // ~7 lines so the user (or LLM) can grasp the whole task state at a glance
+  // without paying for summary/full's full-section dump. Use --view=summary or
+  // --view=full when this isn't enough.
+  const truncate = (s, n) => {
+    s = String(s || '').trim();
+    return s.length > n ? s.slice(0, n - 1) + '…' : s;
+  };
   let out = '';
-  out += `=== Loading previous work: ${task.title} [${task.id}] ===\n(view=minimal)\n`;
-  const specRaw = readFileSafe(path.join(dir, 'spec.md')) || '';
-  const specLines = specRaw.split('\n').slice(0, 3).join('\n');
-  if (specLines.trim()) {
-    out += '--- Spec (first 3 lines) ---\n' + specLines + '\n';
+
+  out += `=== ${task.title} [${task.id}] ===\n`;
+
+  const days = daysSince(task.updated);
+  const ago = days === 0 ? 'today' : days === 1 ? '1d ago' : `${days}d ago`;
+  const tags = task.tags && task.tags.length ? ' · ' + task.tags.map(x => '#' + x).join(' ') : '';
+  const project = task.project ? ` · ${task.project}` : '';
+  out += `Status: ${task.status} · Updated: ${task.updated} (${ago})${project}${tags}\n`;
+
+  // Pull the first non-heading bullet/sentence from the most recent journal —
+  // skip date headers (# 2026-04-15) and section headers (## Work Done) so the
+  // line we surface is the actual recent action, not boilerplate scaffolding.
+  const journalDir = path.join(dir, 'journal');
+  let lastDate = null, lastLine = null;
+  if (fs.existsSync(journalDir)) {
+    const files = fs.readdirSync(journalDir).filter(f => f.endsWith('.md')).sort();
+    if (files.length > 0) {
+      lastDate = files[files.length - 1].replace(/\.md$/, '');
+      const latestText = readFileSafe(path.join(journalDir, files[files.length - 1])) || '';
+      for (const raw of latestText.split('\n')) {
+        const line = raw.trim();
+        if (!line) continue;
+        if (/^#+\s/.test(line)) continue;
+        lastLine = line.replace(/^[-*]\s*/, '');
+        break;
+      }
+    }
   }
+  if (lastLine) out += `Last (${lastDate}): ${truncate(lastLine, 110)}\n`;
+
   const planRaw = readFileSafe(path.join(dir, 'plan.md')) || '';
-  const unresolved = extractPlanUnresolvedTop(planRaw, 5);
+  const unresolved = extractPlanUnresolvedTop(planRaw, 3);
   if (unresolved.length > 0) {
-    out += '--- Unresolved Plan (top 5) ---\n' + unresolved.join('\n') + '\n';
+    out += 'Next:\n' + unresolved.map(line => '  ' + truncate(line, 100)).join('\n') + '\n';
   }
+
+  out += '(recap · --view=summary or --view=full for more detail)\n';
   return out;
 }
 

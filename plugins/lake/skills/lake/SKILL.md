@@ -113,11 +113,11 @@ Templates → see `references/templates.md`. `--parent` flag → see `references
 
 ### `/lake resume [name-or-hash]`
 
-**Bash 1회로 끝낸다. 기본 `--view=summary`(빠름 — 토큰 최소).**
+**Bash 1회로 끝낸다. 기본 `--view=recap`(7줄 다이제스트 — Status / Last / Next 3개).**
 
 1. No arg: run `list --view=compressed`, AskUserQuestion to select
-2. With arg: `lake-cli.js resume <arg> --view=summary` → Echo captured stdout verbatim inside a fenced code block in your text reply
-3. summary로 부족하거나 사용자가 전체 내용을 요청하면 `lake-cli.js resume <arg> --view=full` 재호출
+2. With arg: `lake-cli.js resume <arg>` → Echo captured stdout verbatim inside a fenced code block. Recap이 기본이라 view 플래그 없이 호출.
+3. recap만으로 작업 컨텍스트가 부족하다는 신호가 명시적일 때만 `--view=summary` 재호출, 그래도 부족하면 `--view=full`. 사용자가 묻기 전에 미리 summary/full로 가지 말 것 — recap이 충분한 경우가 대부분이다.
 4. Update spec.md Updated timestamp + `lake-cli.js upsert`
 
 ### `/lake done [name-or-hash]`

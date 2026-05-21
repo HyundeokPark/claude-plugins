@@ -20,6 +20,17 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/lake-block-direct-edit.js"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "hooks": [

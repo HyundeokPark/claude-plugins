@@ -51,7 +51,7 @@ function findTask(index, query) {
   if (/^\d+$/.test(query)) {
     const n = parseInt(query, 10);
     const inprog = index.filter(t => t.status === 'inprogress')
-      .sort((a, b) => b.updated.localeCompare(a.updated));
+      .sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
     const topLevel = inprog.filter(t => !t.parent);
     if (n >= 1 && n <= topLevel.length) return topLevel[n - 1];
     console.error(`번호 ${query} 범위 밖 (1-${topLevel.length})`);
@@ -273,9 +273,9 @@ function cmdList(rawArgs) {
 function renderListV0ByteIdentical(index) {
   let out = '';
   const inprog = index.filter(t => t.status === 'inprogress')
-    .sort((a, b) => b.updated.localeCompare(a.updated));
+    .sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
   const done = index.filter(t => t.status === 'done')
-    .sort((a, b) => b.updated.localeCompare(a.updated))
+    .sort((a, b) => (b.updated || '').localeCompare(a.updated || ''))
     .slice(0, 3);
 
   const topLevel = inprog.filter(t => !t.parent);
@@ -294,7 +294,7 @@ function renderListV0ByteIdentical(index) {
     pos++;
     const tagStr = t.tags && t.tags.length ? '  ' + t.tags.map(x => '#' + x).join(' ') : '';
     rows.push([String(pos), t.id, t.title + tagStr, t.project, t.updated]);
-    const children = (childMap[t.id] || []).sort((a, b) => b.updated.localeCompare(a.updated));
+    const children = (childMap[t.id] || []).sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
     children.forEach(c => {
       const ctagStr = c.tags && c.tags.length ? '  ' + c.tags.map(x => '#' + x).join(' ') : '';
       rows.push(['', c.id, '  └ ' + c.title + ctagStr, c.project, c.updated]);
@@ -369,7 +369,7 @@ function renderListV0ByteIdentical(index) {
 function renderListCompressed(index) {
   let out = '';
   const inprogAll = index.filter(t => t.status === 'inprogress')
-    .sort((a, b) => b.updated.localeCompare(a.updated));
+    .sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
   const topLevel = inprogAll.filter(t => !t.parent);
   const childCountByParent = {};
   let hiddenChildren = 0;
@@ -394,7 +394,7 @@ function renderListCompressed(index) {
   });
 
   const done = index.filter(t => t.status === 'done')
-    .sort((a, b) => b.updated.localeCompare(a.updated))
+    .sort((a, b) => (b.updated || '').localeCompare(a.updated || ''))
     .slice(0, LIST_MAX_DONE);
   if (done.length > 0) {
     out += `\nDone (recent ${done.length}):\n`;
@@ -441,9 +441,9 @@ function renderTreeNode(index, task, depth) {
 function renderListAll(index) {
   let out = '';
   const inprog = index.filter(t => t.status === 'inprogress')
-    .sort((a, b) => b.updated.localeCompare(a.updated));
+    .sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
   const done = index.filter(t => t.status === 'done')
-    .sort((a, b) => b.updated.localeCompare(a.updated));
+    .sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
   out += `In Progress (${inprog.length}):\n`;
   inprog.forEach((t, i) => {
     const stale = daysSince(t.updated) >= 7 ? ' (stale)' : '';
@@ -949,10 +949,20 @@ function cmdUpsert(jsonStr) {
   }
   // Ensure no hash collision
   const existing = index.findIndex(t => t.slug === entry.slug);
+  let stored;
   if (existing >= 0) {
-    // Update
-    index[existing] = { ...index[existing], ...entry };
+    // Update — preserve created, always bump updated (an upsert is a modification)
+    stored = {
+      ...index[existing],
+      ...entry,
+      created: index[existing].created || entry.created || today(),
+      updated: today(),
+    };
+    index[existing] = stored;
   } else {
+    // New entry — always stamp both timestamps so it can never land unsorted
+    entry.created = entry.created || today();
+    entry.updated = entry.updated || today();
     // Check hash collision
     while (index.some(t => t.id === entry.id)) {
       entry.id = crypto.createHash('sha1')
@@ -960,9 +970,10 @@ function cmdUpsert(jsonStr) {
         .digest('hex').substring(0, 6);
     }
     index.push(entry);
+    stored = entry;
   }
   writeIndex(index);
-  console.log(JSON.stringify(entry));
+  console.log(JSON.stringify(stored));
 }
 
 function cmdDone(query) {

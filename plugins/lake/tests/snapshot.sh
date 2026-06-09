@@ -89,7 +89,9 @@ else
 fi
 
 echo "=== AC-V1-Legacy-Noop ==="
-LAKE_LEGACY=1 $CLI resume small-task-fixture > $TMP/leg.out 2> $TMP/leg.err
+# Compare against the full-view golden explicitly: the resume default view changed
+# full→brief in v1.6.0, but this AC asserts LAKE_LEGACY=1 is a no-op vs the full golden.
+LAKE_LEGACY=1 $CLI resume small-task-fixture --view=full > $TMP/leg.out 2> $TMP/leg.err
 noop=$(grep -c "LAKE_LEGACY=1 no-op in v1" $TMP/leg.err || true)
 legacy_tag=$(grep -c "\[mode=legacy\]" $TMP/leg.out || true)
 noop=${noop:-0}

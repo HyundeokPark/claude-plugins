@@ -1,0 +1,10 @@
+{
+  "_comment": "Copy to ~/.claude/prd-lake/projects.json and edit. Defines canonical project names + aliases so `lake list --project <name>` groups cleanly and `upsert` normalizes on save. Delete this file's effect by removing projects.json entirely (no enforcement, backward compatible).",
+  "projects": ["nestads", "heypoll", "infra", "personal", "unknown"],
+  "aliases": {
+    "nestads-deliverer": "nestads",
+    "nestads-backend": "nestads",
+    "heypoll-backend": "heypoll",
+    "wisebirds-terraform": "infra"
+  }
+}

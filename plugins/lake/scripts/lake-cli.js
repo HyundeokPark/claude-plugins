@@ -46,6 +46,39 @@ function writeIndex(index) {
   fs.writeFileSync(INDEX_PATH, JSON.stringify(index, null, 2) + '\n');
 }
 
+const PROJECTS_PATH = path.join(LAKE_DIR, 'projects.json');
+
+// Project registry (optional, per-install). Users define canonical project names + aliases
+// in ~/.claude/prd-lake/projects.json so `list --project` groups cleanly and `upsert`
+// normalizes free-text project values to a fixed set. Missing/invalid file → no enforcement
+// (fully backward compatible). Format:
+//   { "projects": ["nestads","heypoll",...], "aliases": { "nestads-deliverer": "nestads" } }
+function loadProjectConfig() {
+  if (!fs.existsSync(PROJECTS_PATH)) return null;
+  try {
+    const cfg = JSON.parse(fs.readFileSync(PROJECTS_PATH, 'utf8'));
+    return { projects: cfg.projects || [], aliases: cfg.aliases || {} };
+  } catch {
+    return null;
+  }
+}
+
+// Map a raw/free-text project value to its canonical name via the registry.
+// Unknown values return unchanged (never destroys data). No registry → unchanged.
+function normalizeProject(raw, cfg) {
+  if (!raw || !cfg) return raw;
+  const val = String(raw).trim();
+  if (cfg.aliases[val]) return cfg.aliases[val];
+  if (cfg.projects.includes(val)) return val;
+  // soft: strip parenthetical suffix, e.g. "nestads (tbls-pilot)" → "nestads"
+  const base = val.split('(')[0].trim();
+  if (base && base !== val) {
+    if (cfg.aliases[base]) return cfg.aliases[base];
+    if (cfg.projects.includes(base)) return base;
+  }
+  return raw;
+}
+
 function findTask(index, query) {
   // Numeric query → position in the same order as cmdList (inprogress by updated desc, top-level only)
   if (/^\d+$/.test(query)) {
@@ -197,6 +230,7 @@ function parseFlags(cmd, args) {
   let view = null;
   let limit = null;
   let noColor = false;
+  let project = null;
   const positional = [];
   const seen = [];
   for (let i = 0; i < args.length; i++) {
@@ -232,6 +266,8 @@ function parseFlags(cmd, args) {
     }
     if (a.startsWith('--limit=')) { limit = parseInt(a.slice(8), 10); continue; }
     if (a === '--limit') { limit = parseInt(args[++i], 10); continue; }
+    if (a.startsWith('--project=')) { project = a.slice(10); continue; }
+    if (a === '--project') { project = args[++i]; continue; }
     if (aliases[a]) {
       seen.push('--view=' + aliases[a]);
       view = aliases[a];
@@ -253,14 +289,21 @@ function parseFlags(cmd, args) {
       process.exit(2);
     }
   }
-  return { view: view || VIEW_DEFAULTS[cmd], limit, noColor, positional };
+  return { view: view || VIEW_DEFAULTS[cmd], limit, noColor, project, positional };
 }
 
 // --- Commands ---
 
 function cmdList(rawArgs) {
-  const { view } = parseFlags('list', rawArgs);
-  const index = readIndex();
+  const { view, project, positional } = parseFlags('list', rawArgs);
+  let index = readIndex();
+  // Project filter: `list --project nestads` or positional `list nestads`.
+  const want = project || positional[0];
+  if (want) {
+    const cfg = loadProjectConfig();
+    const target = normalizeProject(want, cfg);
+    index = index.filter(t => normalizeProject(t.project, cfg) === target);
+  }
   switch (view) {
     case 'default':    process.stdout.write(renderListV0ByteIdentical(index)); return;
     case 'compressed': process.stdout.write(renderListCompressed(index)); return;
@@ -942,6 +985,11 @@ function renderResumeFiles(task, index, dir) {
 function cmdUpsert(jsonStr) {
   const entry = JSON.parse(jsonStr);
   const index = readIndex();
+
+  // Normalize project to the canonical registry value (if projects.json exists).
+  if (entry.project) {
+    entry.project = normalizeProject(entry.project, loadProjectConfig());
+  }
 
   // Generate id if not provided
   if (!entry.id) {

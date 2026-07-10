@@ -58,6 +58,19 @@ Save work progress to `~/.claude/prd-lake/` per task, so you can instantly resto
 
 `id` is a 6-char SHA1 hash of the slug. Users can reference tasks by hash prefix (e.g. `ce11`).
 
+### project registry — `projects.json` (optional, per-install)
+
+`~/.claude/prd-lake/projects.json` defines each install's canonical project names + aliases, so free-text `project` values group cleanly under `list --project`, and `upsert` normalizes them on save. **Missing/invalid file → no enforcement (fully backward compatible).** See `scripts/projects.example.json`.
+
+```json
+{
+  "projects": ["nestads", "heypoll", "infra"],
+  "aliases": { "nestads-deliverer": "nestads", "heypoll-backend": "heypoll" }
+}
+```
+
+Normalization: exact `aliases` match → canonical; exact `projects` match → itself; else strips a trailing parenthetical (`"nestads (pilot)"` → `nestads`) and retries; unknown values pass through unchanged (never destroys data).
+
 ### lake-cli.js
 
 Located at `~/.claude/prd-lake/lake-cli.js`. This is the **performance layer** — all read-heavy commands MUST use it via Bash to avoid multiple tool calls.
@@ -110,6 +123,7 @@ Templates → see `references/templates.md`. `--parent` flag → see `references
 1. Run: `node ~/.claude/prd-lake/lake-cli.js list --view=compressed`
 2. Echo captured stdout verbatim inside a fenced code block in your text reply. No Read, no Glob.
 3. 전체 트리는 `--view=tree`, 오래된 항목까지 모두 보려면 `--view=all`.
+4. **프로젝트별 필터**: `list --project <name>` 또는 positional `list <name>`. 값은 projects.json으로 정규화되어 그룹핑된다 (예: `list nestads` → nestads/nestads-deliverer/nestads-backend 전부). projects.json 없으면 정확 일치로만 필터.
 
 ### `/lake resume [name-or-hash]`
 

@@ -306,7 +306,7 @@ function cmdList(rawArgs) {
   }
   switch (view) {
     case 'default':    process.stdout.write(renderListV0ByteIdentical(index)); return;
-    case 'compressed': process.stdout.write(renderListCompressed(index)); return;
+    case 'compressed': process.stdout.write(renderListCompressed(index, { noTruncate: !!want })); return;
     case 'tree':       process.stdout.write(renderListTree(index)); return;
     case 'all':        process.stdout.write(renderListAll(index)); return;
   }
@@ -409,7 +409,7 @@ function renderListV0ByteIdentical(index) {
   return out;
 }
 
-function renderListCompressed(index) {
+function renderListCompressed(index, opts = {}) {
   let out = '';
   const inprogAll = index.filter(t => t.status === 'inprogress')
     .sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
@@ -422,8 +422,10 @@ function renderListCompressed(index) {
   });
   const staleCount = inprogAll.filter(t => daysSince(t.updated) >= 7).length;
 
-  const topShown = topLevel.slice(0, LIST_MAX_INPROGRESS);
-  const hiddenStale = topLevel.slice(LIST_MAX_INPROGRESS)
+  // When narrowed (e.g. --project filter), show ALL matching — truncation defeats the filter's purpose.
+  const cap = opts.noTruncate ? topLevel.length : LIST_MAX_INPROGRESS;
+  const topShown = topLevel.slice(0, cap);
+  const hiddenStale = topLevel.slice(cap)
     .filter(t => daysSince(t.updated) >= 7).length;
 
   out += `In Progress (${inprogAll.length}):\n`;
@@ -446,7 +448,9 @@ function renderListCompressed(index) {
     });
   }
 
-  out += `\nShowing ${topShown.length}/${topLevel.length} inprogress (hidden: stale ${hiddenStale}, children ${hiddenChildren}). Use --view=all to disable truncation.\n`;
+  if (topShown.length < topLevel.length || hiddenChildren > 0) {
+    out += `\nShowing ${topShown.length}/${topLevel.length} inprogress (hidden: stale ${hiddenStale}, children ${hiddenChildren}). Use --view=all to disable truncation.\n`;
+  }
   // Unused but could be useful later — keep staleCount available as part of trailer context.
   void staleCount;
   return out;

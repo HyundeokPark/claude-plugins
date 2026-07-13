@@ -121,9 +121,10 @@ Templates → see `references/templates.md`. `--parent` flag → see `references
 **Bash 1회로 끝낸다. 기본 `--view=compressed`(빠름 — 1줄/태스크).**
 
 1. Run: `node ~/.claude/prd-lake/lake-cli.js list --view=compressed`
+   - **사용자가 프로젝트를 지목하면(예: "list nestads", "nestads 것만 보여줘") 반드시 그 값을 cli 인자로 넘긴다: `list nestads --view=compressed`.** 전체 목록을 받아 **손으로 필터하지 말 것** — 느리고 부정확하다(수동 필터는 stale·truncate 때문에 일부만 집는다). cli 필터는 projects.json으로 정규화 + truncation 없이 그 프로젝트 전부를 보여준다.
 2. Echo captured stdout verbatim inside a fenced code block in your text reply. No Read, no Glob.
 3. 전체 트리는 `--view=tree`, 오래된 항목까지 모두 보려면 `--view=all`.
-4. **프로젝트별 필터**: `list --project <name>` 또는 positional `list <name>`. 값은 projects.json으로 정규화되어 그룹핑된다 (예: `list nestads` → nestads/nestads-deliverer/nestads-backend 전부). projects.json 없으면 정확 일치로만 필터.
+4. **프로젝트 필터 상세**: `list <name>` 또는 `list --project <name>`. 값은 projects.json으로 정규화되어 묶인다 (예: `list nestads` → nestads/nestads-deliverer/nestads-backend 전부, stale 포함 전부). projects.json 없으면 정확 일치로만 필터.
 
 ### `/lake resume [name-or-hash]`
 

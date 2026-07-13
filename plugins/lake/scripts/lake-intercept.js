@@ -18,7 +18,18 @@ const path = require('path');
 const LAKE_CLI = process.env.LAKE_CLI_PATH ||
   path.join(homedir(), '.claude', 'prd-lake', 'lake-cli.js');
 
+// Build args for a filtered `lake list <filter...>` invocation. Any explicit
+// --view/-v flag typed by the user wins; otherwise default view is appended.
+function filterArgs(m) {
+  const toks = String(m[1] || '').trim().split(/\s+/).filter(Boolean);
+  const hasView = toks.some((t) => t === '-v' || t.startsWith('--view'));
+  return ['list', ...toks, ...(hasView ? [] : ['--view=default'])];
+}
+
 const PATTERNS = [
+  // Filtered list: "lake list nestads", "lake ls heypoll --view=all", etc.
+  { regex: /^\s*\/?lake\s+(?:list|ls|l)\s+(.+?)\s*$/i, args: filterArgs },
+  // Bare list.
   { regex: /^\s*\/?lake\s+(list|ls|l)\s*$/i, args: ['list', '--view=default'] },
   { regex: /^\s*\/?lake\s*$/i, args: ['list', '--view=default'] },
 ];
@@ -53,12 +64,20 @@ async function main() {
   const prompt = String(payload.prompt || '').trim();
   if (!prompt) return;
 
-  const match = PATTERNS.find((p) => p.regex.test(prompt));
-  if (!match) return;
+  let matched = null;
+  for (const p of PATTERNS) {
+    const m = p.regex.exec(prompt);
+    if (m) { matched = { p, m }; break; }
+  }
+  if (!matched) return;
+
+  const args = typeof matched.p.args === 'function'
+    ? matched.p.args(matched.m)
+    : matched.p.args;
 
   let out;
   try {
-    out = execFileSync('node', [LAKE_CLI, ...match.args], {
+    out = execFileSync('node', [LAKE_CLI, ...args], {
       encoding: 'utf-8',
       timeout: 5000,
       env: { ...process.env, LAKE_LIST_WIDTH: detectCols() },

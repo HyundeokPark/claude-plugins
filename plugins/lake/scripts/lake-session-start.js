@@ -101,6 +101,53 @@ function buildNotification() {
   return lines.join('\n');
 }
 
+// --- 신규 세션 자동 브리핑 (AI 컨텍스트 주입용) ---
+// 사용자가 인수인계 문서를 직접 열지 않아도, 새 세션의 AI가 최근 태스크의
+// 마지막 상태(compactor가 갱신한 자동 상태 섹션)를 알고 시작하게 한다.
+
+function readAutoContext(slug) {
+  try {
+    const c = fs.readFileSync(path.join(INPROGRESS, slug, 'context.md'), 'utf-8');
+    const m = c.match(/<!-- lake:auto-context:start -->[\s\S]*?\n([\s\S]*?)<!-- lake:auto-context:end -->/);
+    if (!m) return null;
+    const body = m[1].replace(/^## .*\n/, '').trim();
+    return body ? body.slice(0, 300) : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildBriefing(cwd) {
+  try {
+    const index = JSON.parse(fs.readFileSync(path.join(LAKE_DIR, 'index.json'), 'utf-8'));
+    const inprog = index.filter(t => t.status === 'inprogress');
+    if (inprog.length === 0) return '';
+
+    // cwd가 태스크의 project와 맞으면 우선, 그 다음 최근 갱신순
+    const base = cwd ? path.basename(cwd) : '';
+    inprog.sort((a, b) => {
+      const ap = base && a.project && base.includes(String(a.project)) ? 1 : 0;
+      const bp = base && b.project && base.includes(String(b.project)) ? 1 : 0;
+      if (ap !== bp) return bp - ap;
+      return String(b.updated || '').localeCompare(String(a.updated || ''));
+    });
+
+    const lines = [];
+    for (const t of inprog.slice(0, 3)) {
+      lines.push(`- [${t.id}] ${t.title} (${t.project || '-'}, updated ${t.updated})`);
+      const auto = readAutoContext(t.slug);
+      if (auto) lines.push('  ' + auto.replace(/\n/g, '\n  '));
+    }
+
+    return `[PRD Lake 자동 브리핑] 최근 진행 중 태스크와 마지막 상태:\n${lines.join('\n')}\n` +
+      '→ 사용자의 요청이 위 태스크 중 하나를 이어가는 것이면, 작업 시작 전에 ' +
+      '`node ~/.claude/prd-lake/lake-cli.js resume <id>`를 Bash로 실행해 전체 컨텍스트를 로드하라 ' +
+      '(이 세션의 자동 기록이 그 태스크로 귀속되는 마커도 이때 찍힌다).';
+  } catch {
+    return '';
+  }
+}
+
 // --- lake-cli.js 자동 배포 + 실행 스크립트 등록 ---
 function ensureLakeSetup() {
   // 1. lake-cli.js를 ~/.claude/prd-lake/로 복사
@@ -202,14 +249,23 @@ async function main() {
     // 알림 실패해도 세션 시작 차단 안 함
   }
 
+  let briefing = '';
+  try {
+    briefing = buildBriefing(payload.cwd) || '';
+  } catch {
+    // 브리핑 실패해도 세션 시작 차단 안 함
+  }
+
   // `message`는 Claude Code 훅 규격에 없는 필드라 조용히 버려진다 (과거 버그).
-  // 사용자 화면에는 systemMessage, AI 컨텍스트에는 additionalContext로 전달해야 한다.
+  // 사용자 화면에는 systemMessage(짧은 목록), AI 컨텍스트에는 additionalContext
+  // (목록 + 태스크별 마지막 상태 브리핑)로 전달한다.
   const result = { continue: true };
-  if (message) {
-    result.systemMessage = message;
+  if (message) result.systemMessage = message;
+  const context = [message, briefing].filter(Boolean).join('\n\n');
+  if (context) {
     result.hookSpecificOutput = {
       hookEventName: 'SessionStart',
-      additionalContext: message,
+      additionalContext: context,
     };
   }
   process.stdout.write(JSON.stringify(result));

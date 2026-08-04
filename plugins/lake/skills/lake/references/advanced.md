@@ -21,7 +21,10 @@ description: lake 스킬의 Notes 및 고급 주제
 
 ```
 세션 중:  UserPromptSubmit/PostToolUse 훅 → .spool/{session_id}.jsonl append (LLM 없음)
-저장/재개: lake-cli resume·upsert → .spool/markers/{session_id}.json 마커 ("이 세션은 이 태스크")
+저장/재개: lake-cli resume·upsert → .spool/markers/{session_id}.json 마커
+           + spool 타임라인에 task 이벤트 기록 (세션 중 태스크 전환 시 구간 분리 근거)
+세션 시작: SessionStart 훅이 최근 inprogress 태스크 3개의 마지막 자동 상태를
+           AI 컨텍스트에 브리핑 주입 → AI가 이어가는 요청을 감지하면 스스로 resume
 세션 종료: SessionEnd 훅 → lake-compactor.js (detached, claude -p haiku)
            ├─ journal/{today}.md: "세션 자동 기록" 섹션 append — 정제(시간순 사실), 요약 아님
            └─ context.md: <!-- lake:auto-context --> 마커 구간만 덮어쓰기 (수동 작성분 보존)

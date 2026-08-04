@@ -169,7 +169,8 @@ process.stdin.on('end',()=>{
     const j=JSON.parse(raw);
     const msg=j.systemMessage||'';
     const ctx=(j.hookSpecificOutput||{}).additionalContext||'';
-    if (!msg || msg !== ctx) { console.log(0); return; }
+    // additionalContext는 목록(msg) + 자동 브리핑이 붙을 수 있다 — msg로 시작하면 계약 충족
+    if (!msg || !ctx.startsWith(msg)) { console.log(0); return; }
     console.log(msg.split('\n').length);
   } catch(e){ console.log('ERR:'+e.message); }
 });

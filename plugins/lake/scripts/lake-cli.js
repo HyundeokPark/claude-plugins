@@ -62,11 +62,18 @@ function touchActiveMarker(task) {
       at: new Date().toISOString(),
     }) + '\n';
     const sid = process.env.CLAUDE_CODE_SESSION_ID;
-    if (sid) {
+    if (sid && process.env.LAKE_COMPACTOR !== '1') {
       const markersDir = path.join(LAKE_DIR, '.spool', 'markers');
       fs.mkdirSync(markersDir, { recursive: true });
       fs.writeFileSync(path.join(markersDir, sid + '.json'), payload);
-    } else {
+      // spool 타임라인에도 태스크 전환 이벤트를 남긴다.
+      // 한 세션에서 여러 태스크를 오가면 compactor가 이 이벤트로 구간을 나눠
+      // 각 구간을 맞는 태스크 journal로 보낸다 (마지막 마커가 전부 가져가는 것 방지).
+      fs.appendFileSync(
+        path.join(LAKE_DIR, '.spool', sid + '.jsonl'),
+        JSON.stringify({ t: new Date().toISOString(), e: 'task', id: task.id, slug: task.slug }) + '\n'
+      );
+    } else if (!sid) {
       fs.mkdirSync(LAKE_DIR, { recursive: true });
       fs.writeFileSync(ACTIVE_TASK_PATH, payload);
     }
@@ -195,7 +202,7 @@ function relDate(ymd) {
 
 // --- Version & Flag Contract ---
 
-const LAKE_CLI_VERSION = '1.2.0';
+const LAKE_CLI_VERSION = '1.3.0';
 
 const VIEW_DEFAULTS = {
   resume: 'brief', // briefing-style digest (Goal/Done/Next/Blockers/Context, no journal) — AI can act directly from this

@@ -64,6 +64,31 @@ function removeMarker(sessionId) {
   try { fs.unlinkSync(path.join(MARKERS_DIR, sessionId + '.json')); } catch { /* 없으면 무시 */ }
 }
 
+// spool 타임라인을 'task' 이벤트(resume/save 순간) 기준으로 구간 분리한다.
+// 한 세션에서 태스크를 오가도 각 구간이 맞는 태스크로 귀속된다.
+// 첫 resume 이전의 활동(탐색하다 resume하는 패턴)은 첫 태스크 구간에 합친다.
+function segmentByTask(events) {
+  const segments = [];
+  let current = null;
+  const pre = [];
+  for (const ev of events) {
+    if (ev.e === 'task' && ev.slug) {
+      if (current && current.task.slug === ev.slug) continue; // 같은 태스크 재-resume은 구간 유지
+      if (current) segments.push(current);
+      current = { task: { id: ev.id, slug: ev.slug }, events: [] };
+    } else if (current) {
+      current.events.push(ev);
+    } else {
+      pre.push(ev);
+    }
+  }
+  if (current) segments.push(current);
+  if (segments.length > 0 && pre.length > 0) {
+    segments[0].events = pre.concat(segments[0].events);
+  }
+  return { segments, unsegmented: segments.length === 0 ? pre : [] };
+}
+
 function renderEvents(events) {
   const rendered = events.map((ev) => {
     const hm = (ev.t || '').slice(11, 16);
@@ -172,27 +197,50 @@ function main() {
     return;
   }
 
-  const task = readActiveTask(sessionId);
-  if (!task) {
-    moveToUnfiled(spoolFile);
-    log(`unfiled: ${path.basename(spoolFile)} (${events.length} events, no session marker)`);
-    return;
+  const { segments, unsegmented } = segmentByTask(events);
+
+  // task 이벤트가 없는 spool(resume 없는 세션 또는 구버전 cli): 세션 마커 폴백
+  if (segments.length === 0) {
+    const task = readActiveTask(sessionId);
+    if (!task) {
+      moveToUnfiled(spoolFile);
+      log(`unfiled: ${path.basename(spoolFile)} (${events.length} events, no session marker)`);
+      return;
+    }
+    segments.push({ task, events: unsegmented });
   }
 
-  const output = summarize(buildPrompt(task, events));
-  const blocks = parseBlocks(output);
-  if (!blocks) {
-    log(`parse-fail: ${path.basename(spoolFile)} — spool 유지, 다음 세션에서 재시도`);
+  let failed = 0;
+  for (const seg of segments) {
+    if (seg.events.length < MIN_EVENTS) continue; // resume만 찍고 지나간 구간
+    const taskDir = path.join(INPROGRESS, seg.task.slug);
+    if (!fs.existsSync(taskDir)) {
+      log(`skip: ${seg.task.slug} (inprogress에 없음, ${seg.events.length} events)`);
+      continue;
+    }
+    try {
+      const blocks = parseBlocks(summarize(buildPrompt(seg.task, seg.events)));
+      if (!blocks) {
+        failed++;
+        log(`parse-fail: ${path.basename(spoolFile)} → ${seg.task.slug}`);
+        continue;
+      }
+      appendJournal(taskDir, blocks.journal, seg.events.length);
+      updateContext(taskDir, blocks.context);
+      log(`ok: ${path.basename(spoolFile)} → ${seg.task.slug} (${seg.events.length} events)`);
+    } catch (e) {
+      failed++;
+      log(`error: ${seg.task.slug}: ${e.message}`);
+    }
+  }
+
+  if (failed === 0) {
+    fs.unlinkSync(spoolFile);
+    removeMarker(sessionId);
+  } else {
+    // spool 유지 → 다음 세션에서 재시도 (성공한 구간은 재시도 시 journal에 중복될 수 있음 — log 참조)
     process.exitCode = 1;
-    return;
   }
-
-  const taskDir = path.join(INPROGRESS, task.slug);
-  appendJournal(taskDir, blocks.journal, events.length);
-  updateContext(taskDir, blocks.context);
-  fs.unlinkSync(spoolFile);
-  removeMarker(sessionId);
-  log(`ok: ${path.basename(spoolFile)} → ${task.slug} (${events.length} events)`);
 }
 
 try {

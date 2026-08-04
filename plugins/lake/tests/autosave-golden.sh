@@ -114,6 +114,35 @@ grep -q '스텁 시도' "$LAKE/inprogress/task-y/journal/$today2.md" 2>/dev/null
 [ ! -f "$SPOOL/markers/sess-a.json" ] || ok=0   # 처리 후 마커 정리됨
 if [ "$ok" = 1 ]; then pass "AC-Marker-Session-Isolation"; else fail "AC-Marker-Session-Isolation"; fi
 
+echo "=== AC-Compactor-Task-Segmentation (세션 중 태스크 전환 → 구간별 귀속) ==="
+make_task seg-x; make_task seg-y
+{
+  printf '{"t":"2026-08-05T09:00:00Z","e":"prompt","text":"탐색 시작"}\n'          # 첫 resume 이전 활동 → seg-x로 합류
+  printf '{"t":"2026-08-05T09:01:00Z","e":"task","id":"x1","slug":"seg-x"}\n'
+  for i in 2 3 4; do printf '{"t":"2026-08-05T09:0%s:00Z","e":"tool","name":"Bash","in":"command=x-work"}\n' "$i"; done
+  printf '{"t":"2026-08-05T10:00:00Z","e":"task","id":"y1","slug":"seg-y"}\n'
+  for i in 1 2 3; do printf '{"t":"2026-08-05T10:0%s:00Z","e":"tool","name":"Edit","in":"file_path=/y-work"}\n' "$i"; done
+} > "$SPOOL/seg-sess.jsonl"
+HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/seg-sess.jsonl"
+today3=$(date -u +%Y-%m-%d)
+ok=1
+grep -q '스텁 시도' "$LAKE/inprogress/seg-x/journal/$today3.md" 2>/dev/null || ok=0
+grep -q '스텁 시도' "$LAKE/inprogress/seg-y/journal/$today3.md" 2>/dev/null || ok=0
+grep -q '4 events' "$LAKE/inprogress/seg-x/journal/$today3.md" 2>/dev/null || ok=0  # pre 1 + tool 3
+grep -q '3 events' "$LAKE/inprogress/seg-y/journal/$today3.md" 2>/dev/null || ok=0
+[ ! -f "$SPOOL/seg-sess.jsonl" ] || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Compactor-Task-Segmentation"; else fail "AC-Compactor-Task-Segmentation"; fi
+
+echo "=== AC-SessionStart-Briefing (신규 세션에 최근 태스크 상태 자동 주입) ==="
+printf '[{"id":"abc123","slug":"auto-task","title":"Auto Task","project":"t","status":"inprogress","created":"2026-07-01","updated":"2026-08-05"}]\n' > "$LAKE/index.json"
+brief_out=$(printf '{"session_id":"brief-sess","cwd":"/tmp"}' | HOME="$FAKE_HOME" node "$S/lake-session-start.js" 2>/dev/null)
+ok=1
+echo "$brief_out" | grep -q '자동 브리핑' || ok=0
+echo "$brief_out" | grep -q 'Auto Task' || ok=0
+echo "$brief_out" | grep -q 'resume' || ok=0        # AI에게 resume 지시 포함
+echo "$brief_out" | grep -q '스텁 상태' || ok=0     # compactor가 쓴 자동 상태 섹션 내용
+if [ "$ok" = 1 ]; then pass "AC-SessionStart-Briefing"; else fail "AC-SessionStart-Briefing"; fi
+
 echo "=== AC-Cli-Marker-Per-Session (resume이 세션별 마커 기록) ==="
 printf '[{"id":"abc123","slug":"auto-task","title":"Auto Task","project":"t","status":"inprogress","created":"2026-07-01","updated":"2026-07-01"}]\n' > "$LAKE/index.json"
 HOME="$FAKE_HOME" CLAUDE_CODE_SESSION_ID="cli-sess-1" node "$S/lake-cli.js" resume auto-task > /dev/null 2>&1

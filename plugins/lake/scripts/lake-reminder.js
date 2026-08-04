@@ -62,4 +62,12 @@ if (shouldRemind()) {
   }
 }
 
-process.stdout.write(JSON.stringify({ message }));
+// `message` 필드는 훅 규격에 없어 버려진다 — AI에게는 additionalContext로 주입해야 한다.
+const result = {};
+if (message) {
+  result.hookSpecificOutput = {
+    hookEventName: 'PostToolUse',
+    additionalContext: message,
+  };
+}
+process.stdout.write(JSON.stringify(result));

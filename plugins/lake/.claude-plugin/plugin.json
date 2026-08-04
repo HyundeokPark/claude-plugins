@@ -1,11 +1,16 @@
 {
   "name": "lake",
-  "version": "1.6.5",
+  "version": "1.6.6",
   "description": "PRD Lake - Session progress persistence system. Save work progress per task (spec/plan/context/journal) and resume instantly in the next session.",
   "author": {
     "name": "HyundeokPark"
   },
   "homepage": "https://github.com/HyundeokPark/claude-plugins",
   "license": "MIT",
-  "keywords": ["productivity", "session", "persistence", "workflow"]
+  "keywords": [
+    "productivity",
+    "session",
+    "persistence",
+    "workflow"
+  ]
 }

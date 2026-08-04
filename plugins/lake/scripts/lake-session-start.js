@@ -149,9 +149,14 @@ try {
   // 알림 실패해도 세션 시작 차단 안 함
 }
 
-const result = JSON.stringify({
-  continue: true,
-  suppressOutput: false,
-  message
-});
-process.stdout.write(result);
+// `message`는 Claude Code 훅 규격에 없는 필드라 조용히 버려진다 (과거 버그).
+// 사용자 화면에는 systemMessage, AI 컨텍스트에는 additionalContext로 전달해야 한다.
+const result = { continue: true };
+if (message) {
+  result.systemMessage = message;
+  result.hookSpecificOutput = {
+    hookEventName: 'SessionStart',
+    additionalContext: message,
+  };
+}
+process.stdout.write(JSON.stringify(result));

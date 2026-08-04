@@ -158,15 +158,18 @@ else
 fi
 
 echo "=== AC-Shared-SessionStart-Size ==="
-# Run the hook as a real process and inspect the emitted JSON message field.
+# Run the hook as a real process and inspect the emitted JSON.
+# Contract: user-visible text in systemMessage, AI context in hookSpecificOutput.additionalContext
+# (the legacy `message` field is not part of the Claude Code hook schema and gets dropped).
 ss_raw=$(HOME="$FAKE_HOME" TZ=UTC node "$PLUGIN_DIR/scripts/lake-session-start.js" 2>/dev/null || true)
 ss_lines=$(printf '%s' "$ss_raw" | node -e "
 let raw='';process.stdin.on('data',d=>raw+=d);
 process.stdin.on('end',()=>{
   try {
     const j=JSON.parse(raw);
-    const msg=j.message||'';
-    if (!msg) { console.log(0); return; }
+    const msg=j.systemMessage||'';
+    const ctx=(j.hookSpecificOutput||{}).additionalContext||'';
+    if (!msg || msg !== ctx) { console.log(0); return; }
     console.log(msg.split('\n').length);
   } catch(e){ console.log('ERR:'+e.message); }
 });

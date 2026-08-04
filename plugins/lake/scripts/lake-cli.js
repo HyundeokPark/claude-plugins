@@ -47,6 +47,22 @@ function writeIndex(index) {
 }
 
 const PROJECTS_PATH = path.join(LAKE_DIR, 'projects.json');
+const ACTIVE_TASK_PATH = path.join(LAKE_DIR, '.active-task');
+
+// Records which task the current session is working on. Consumed by the Stop hook
+// (updates only this task's timestamp) and the spool compactor (auto-journal target).
+function touchActiveMarker(task) {
+  try {
+    fs.mkdirSync(LAKE_DIR, { recursive: true });
+    fs.writeFileSync(ACTIVE_TASK_PATH, JSON.stringify({
+      id: task.id,
+      slug: task.slug,
+      at: new Date().toISOString(),
+    }) + '\n');
+  } catch {
+    // best-effort — never fail the command over the marker
+  }
+}
 
 // Project registry (optional, per-install). Users define canonical project names + aliases
 // in ~/.claude/prd-lake/projects.json so `list --project` groups cleanly and `upsert`
@@ -168,7 +184,7 @@ function relDate(ymd) {
 
 // --- Version & Flag Contract ---
 
-const LAKE_CLI_VERSION = '1.0.0';
+const LAKE_CLI_VERSION = '1.1.0';
 
 const VIEW_DEFAULTS = {
   resume: 'brief', // briefing-style digest (Goal/Done/Next/Blockers/Context, no journal) — AI can act directly from this
@@ -522,6 +538,7 @@ function cmdResume(rawArgs) {
   const index = readIndex();
   const task = findTask(index, query);
   const dir = taskDir(task);
+  touchActiveMarker(task);
 
   const isLegacy = process.env.LAKE_LEGACY === '1';
   if (isLegacy) {
@@ -1025,6 +1042,7 @@ function cmdUpsert(jsonStr) {
     stored = entry;
   }
   writeIndex(index);
+  touchActiveMarker(stored);
   console.log(JSON.stringify(stored));
 }
 

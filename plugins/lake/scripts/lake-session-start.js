@@ -159,6 +159,19 @@ function recoverOrphanSpools(currentSessionId) {
       // 복구 실패해도 세션 시작 차단 안 함
     }
   }
+
+  // spool 없이 남은 고아 마커(세션별 태스크 귀속 기록) 청소 — 7일 지난 것
+  try {
+    const markersDir = path.join(spool.SPOOL_DIR, 'markers');
+    if (fs.existsSync(markersDir)) {
+      for (const m of fs.readdirSync(markersDir)) {
+        const mf = path.join(markersDir, m);
+        if (now - fs.statSync(mf).mtimeMs > 7 * 24 * 60 * 60 * 1000) fs.unlinkSync(mf);
+      }
+    }
+  } catch {
+    // 청소 실패해도 세션 시작 차단 안 함
+  }
 }
 
 async function main() {

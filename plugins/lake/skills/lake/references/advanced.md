@@ -21,7 +21,7 @@ description: lake 스킬의 Notes 및 고급 주제
 
 ```
 세션 중:  UserPromptSubmit/PostToolUse 훅 → .spool/{session_id}.jsonl append (LLM 없음)
-저장/재개: lake-cli resume·upsert → .active-task 마커 ("이 세션은 이 태스크")
+저장/재개: lake-cli resume·upsert → .spool/markers/{session_id}.json 마커 ("이 세션은 이 태스크")
 세션 종료: SessionEnd 훅 → lake-compactor.js (detached, claude -p haiku)
            ├─ journal/{today}.md: "세션 자동 기록" 섹션 append — 정제(시간순 사실), 요약 아님
            └─ context.md: <!-- lake:auto-context --> 마커 구간만 덮어쓰기 (수동 작성분 보존)
@@ -33,4 +33,5 @@ description: lake 스킬의 Notes 및 고급 주제
 - 이벤트 3개 미만 spool은 폐기. compactor 로그: `.spool/compactor.log`.
 - 재귀 방지: compactor의 headless claude에는 `LAKE_COMPACTOR=1`이 심어져 훅이 spool을 남기지 않음.
 - 테스트: `tests/autosave-golden.sh` (LAKE_SUMMARIZER_CMD 스텁으로 LLM 없이 검증).
-- 동시 세션 주의: 마커는 전역 1개라, 병렬 세션이 서로 다른 태스크를 작업하면 나중 마커가 이긴다.
+- 병렬 세션 안전 (v1.7.1+): 마커가 세션별(`markers/{session_id}.json`)이라 동시 세션이 서로 다른 태스크를 작업해도 각자 태스크로 귀속된다. compactor는 자기 세션 마커만 보며, 전역 `.active-task`(레거시)로 폴백하지 않는다 — 마커 없으면 unfiled.
+- 세션이 resume/save 없이 작업만 한 경우: 태스크 귀속을 알 수 없으므로 unfiled 보존. 자동 journal을 원하면 세션 시작 시 `/lake resume <태스크>`부터.

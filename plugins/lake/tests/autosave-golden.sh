@@ -18,11 +18,20 @@ PASS=0; FAIL=0
 pass() { echo "  [PASS] $1"; PASS=$((PASS+1)); }
 fail() { echo "  [FAIL] $1"; FAIL=$((FAIL+1)); }
 
+make_task() { # $1=slug
+  mkdir -p "$LAKE/inprogress/$1/journal"
+  printf -- '# %s\n- **Updated**: 2026-07-01 10:00\n' "$1" > "$LAKE/inprogress/$1/spec.md"
+  printf -- '# Context\n- **Branch**: main\n' > "$LAKE/inprogress/$1/context.md"
+}
+
+set_marker() { # $1=session_id $2=slug — 세션별 마커
+  mkdir -p "$SPOOL/markers"
+  printf -- '{"id":"abc123","slug":"%s","at":"%s"}\n' "$2" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$SPOOL/markers/$1.json"
+}
+
 setup_task() {
-  mkdir -p "$LAKE/inprogress/auto-task/journal"
-  printf -- '# auto-task\n- **Updated**: 2026-07-01 10:00\n' > "$LAKE/inprogress/auto-task/spec.md"
-  printf -- '# Context\n- **Branch**: main\n' > "$LAKE/inprogress/auto-task/context.md"
-  printf -- '{"id":"abc123","slug":"auto-task","at":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$LAKE/.active-task"
+  make_task auto-task
+  set_marker "$SID" auto-task
 }
 
 # 스텁 요약기: 프롬프트를 무시하고 고정 블록 출력
@@ -82,11 +91,33 @@ HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/$SID.jsonl"
 starts=$(grep -c 'lake:auto-context:start' "$c")
 if [ "$starts" = 1 ]; then pass "AC-Compactor-Context-Idempotent"; else fail "AC-Compactor-Context-Idempotent ($starts sections)"; fi
 
-echo "=== AC-Compactor-Unfiled (마커 없음 → unfiled 보존) ==="
-rm -f "$LAKE/.active-task"
+echo "=== AC-Compactor-Unfiled (이 세션의 마커 없음 → unfiled 보존, 전역 마커도 무시) ==="
+# 레거시 전역 마커가 있어도 세션별 마커가 없으면 절대 귀속시키지 않는다 (병렬 세션 오염 방지)
+printf -- '{"id":"abc123","slug":"auto-task","at":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$LAKE/.active-task"
 for i in 1 2 3; do printf '{"t":"2026-08-04T10:0%s:00Z","e":"tool","name":"Bash","in":"command=x"}\n' "$i"; done > "$SPOOL/nomark.jsonl"
 HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/nomark.jsonl"
 if [ -f "$SPOOL/unfiled/nomark.jsonl" ]; then pass "AC-Compactor-Unfiled"; else fail "AC-Compactor-Unfiled"; fi
+rm -f "$LAKE/.active-task"
+
+echo "=== AC-Marker-Session-Isolation (병렬 세션이 각자 태스크로 귀속) ==="
+make_task task-x; make_task task-y
+set_marker sess-a task-x
+set_marker sess-b task-y
+for i in 1 2 3; do printf '{"t":"2026-08-04T14:0%s:00Z","e":"tool","name":"Bash","in":"command=a"}\n' "$i"; done > "$SPOOL/sess-a.jsonl"
+for i in 1 2 3; do printf '{"t":"2026-08-04T14:0%s:00Z","e":"tool","name":"Bash","in":"command=b"}\n' "$i"; done > "$SPOOL/sess-b.jsonl"
+HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/sess-a.jsonl"
+HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/sess-b.jsonl"
+today2=$(date -u +%Y-%m-%d)
+ok=1
+grep -q '스텁 시도' "$LAKE/inprogress/task-x/journal/$today2.md" 2>/dev/null || ok=0
+grep -q '스텁 시도' "$LAKE/inprogress/task-y/journal/$today2.md" 2>/dev/null || ok=0
+[ ! -f "$SPOOL/markers/sess-a.json" ] || ok=0   # 처리 후 마커 정리됨
+if [ "$ok" = 1 ]; then pass "AC-Marker-Session-Isolation"; else fail "AC-Marker-Session-Isolation"; fi
+
+echo "=== AC-Cli-Marker-Per-Session (resume이 세션별 마커 기록) ==="
+printf '[{"id":"abc123","slug":"auto-task","title":"Auto Task","project":"t","status":"inprogress","created":"2026-07-01","updated":"2026-07-01"}]\n' > "$LAKE/index.json"
+HOME="$FAKE_HOME" CLAUDE_CODE_SESSION_ID="cli-sess-1" node "$S/lake-cli.js" resume auto-task > /dev/null 2>&1
+if grep -q '"slug":"auto-task"' "$SPOOL/markers/cli-sess-1.json" 2>/dev/null; then pass "AC-Cli-Marker-Per-Session"; else fail "AC-Cli-Marker-Per-Session"; fi
 
 echo "=== AC-Compactor-Tiny-Spool (이벤트 3개 미만 → 폐기) ==="
 printf '{"t":"2026-08-04T10:00:00Z","e":"prompt","text":"hi"}\n' > "$SPOOL/tiny.jsonl"

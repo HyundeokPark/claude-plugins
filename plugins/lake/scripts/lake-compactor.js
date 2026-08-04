@@ -22,7 +22,7 @@ const LAKE_DIR = path.join(process.env.HOME, '.claude', 'prd-lake');
 const INPROGRESS = path.join(LAKE_DIR, 'inprogress');
 const SPOOL_DIR = path.join(LAKE_DIR, '.spool');
 const UNFILED_DIR = path.join(SPOOL_DIR, 'unfiled');
-const ACTIVE_TASK_PATH = path.join(LAKE_DIR, '.active-task');
+const MARKERS_DIR = path.join(SPOOL_DIR, 'markers');
 const LOG_PATH = path.join(SPOOL_DIR, 'compactor.log');
 
 const MIN_EVENTS = 3;          // 이보다 적으면 기록할 가치 없음 → spool 폐기
@@ -45,9 +45,12 @@ function readEvents(spoolFile) {
   return events;
 }
 
-function readActiveTask() {
+// 이 세션의 마커만 읽는다. 전역 마커 폴백은 하지 않는다 —
+// 병렬 세션 환경에서 다른 세션의 태스크로 오염되는 것보다 unfiled 보존이 안전하다.
+function readActiveTask(sessionId) {
   try {
-    const marker = JSON.parse(fs.readFileSync(ACTIVE_TASK_PATH, 'utf-8'));
+    const markerFile = path.join(MARKERS_DIR, sessionId + '.json');
+    const marker = JSON.parse(fs.readFileSync(markerFile, 'utf-8'));
     if (!marker.slug || !marker.at) return null;
     if (Date.now() - new Date(marker.at).getTime() > MARKER_MAX_AGE_MS) return null;
     if (!fs.existsSync(path.join(INPROGRESS, marker.slug))) return null;
@@ -55,6 +58,10 @@ function readActiveTask() {
   } catch {
     return null;
   }
+}
+
+function removeMarker(sessionId) {
+  try { fs.unlinkSync(path.join(MARKERS_DIR, sessionId + '.json')); } catch { /* 없으면 무시 */ }
 }
 
 function renderEvents(events) {
@@ -156,17 +163,19 @@ function moveToUnfiled(spoolFile) {
 function main() {
   const spoolFile = process.argv[2];
   if (!spoolFile || !fs.existsSync(spoolFile)) return;
+  const sessionId = path.basename(spoolFile, '.jsonl');
 
   const events = readEvents(spoolFile);
   if (events.length < MIN_EVENTS) {
     fs.unlinkSync(spoolFile);
+    removeMarker(sessionId);
     return;
   }
 
-  const task = readActiveTask();
+  const task = readActiveTask(sessionId);
   if (!task) {
     moveToUnfiled(spoolFile);
-    log(`unfiled: ${path.basename(spoolFile)} (${events.length} events, no active task)`);
+    log(`unfiled: ${path.basename(spoolFile)} (${events.length} events, no session marker)`);
     return;
   }
 
@@ -182,6 +191,7 @@ function main() {
   appendJournal(taskDir, blocks.journal, events.length);
   updateContext(taskDir, blocks.context);
   fs.unlinkSync(spoolFile);
+  removeMarker(sessionId);
   log(`ok: ${path.basename(spoolFile)} → ${task.slug} (${events.length} events)`);
 }
 

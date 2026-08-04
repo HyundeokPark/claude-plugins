@@ -11,15 +11,17 @@
 
 const fs = require('fs');
 const path = require('path');
+const spool = require('./lake-spool');
 
 const LAKE_DIR = path.join(process.env.HOME, '.claude', 'prd-lake');
 const INPROGRESS = path.join(LAKE_DIR, 'inprogress');
 const ACTIVE_TASK_PATH = path.join(LAKE_DIR, '.active-task');
+const MARKERS_DIR = path.join(LAKE_DIR, '.spool', 'markers');
 const MARKER_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 마커는 24시간까지만 유효
 
-function readActiveMarker() {
+function parseMarker(file) {
   try {
-    const marker = JSON.parse(fs.readFileSync(ACTIVE_TASK_PATH, 'utf-8'));
+    const marker = JSON.parse(fs.readFileSync(file, 'utf-8'));
     if (!marker.slug || !marker.at) return null;
     if (Date.now() - new Date(marker.at).getTime() > MARKER_MAX_AGE_MS) return null;
     return marker;
@@ -28,8 +30,17 @@ function readActiveMarker() {
   }
 }
 
-function updateTimestamp() {
-  const marker = readActiveMarker();
+// 이 세션의 마커 우선. 없으면 레거시 전역 마커 폴백 (타임스탬프 갱신은 저위험이라 허용).
+function readActiveMarker(sessionId) {
+  if (sessionId) {
+    const m = parseMarker(path.join(MARKERS_DIR, sessionId + '.json'));
+    if (m) return m;
+  }
+  return parseMarker(ACTIVE_TASK_PATH);
+}
+
+function updateTimestamp(sessionId) {
+  const marker = readActiveMarker(sessionId);
   if (!marker) return;
 
   const specPath = path.join(INPROGRESS, marker.slug, 'spec.md');
@@ -49,12 +60,15 @@ function updateTimestamp() {
   }
 }
 
-try {
-  updateTimestamp();
-} catch {
-  // 조용히 실패
+async function main() {
+  const payload = await spool.readStdinJson();
+  try {
+    updateTimestamp(payload.session_id);
+  } catch {
+    // 조용히 실패
+  }
+  // Stop hook은 절대 세션 종료를 차단하지 않는다
+  process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }));
 }
 
-// Stop hook은 절대 세션 종료를 차단하지 않는다
-const result = JSON.stringify({ continue: true, suppressOutput: true });
-process.stdout.write(result);
+main().catch(() => process.stdout.write(JSON.stringify({ continue: true })));

@@ -51,14 +51,25 @@ const ACTIVE_TASK_PATH = path.join(LAKE_DIR, '.active-task');
 
 // Records which task the current session is working on. Consumed by the Stop hook
 // (updates only this task's timestamp) and the spool compactor (auto-journal target).
+// Parallel sessions each get their own marker under .spool/markers/{session_id}.json
+// so concurrent sessions on different tasks never contaminate each other.
+// Without a session id (manual terminal use) falls back to the legacy global marker.
 function touchActiveMarker(task) {
   try {
-    fs.mkdirSync(LAKE_DIR, { recursive: true });
-    fs.writeFileSync(ACTIVE_TASK_PATH, JSON.stringify({
+    const payload = JSON.stringify({
       id: task.id,
       slug: task.slug,
       at: new Date().toISOString(),
-    }) + '\n');
+    }) + '\n';
+    const sid = process.env.CLAUDE_CODE_SESSION_ID;
+    if (sid) {
+      const markersDir = path.join(LAKE_DIR, '.spool', 'markers');
+      fs.mkdirSync(markersDir, { recursive: true });
+      fs.writeFileSync(path.join(markersDir, sid + '.json'), payload);
+    } else {
+      fs.mkdirSync(LAKE_DIR, { recursive: true });
+      fs.writeFileSync(ACTIVE_TASK_PATH, payload);
+    }
   } catch {
     // best-effort — never fail the command over the marker
   }
@@ -184,7 +195,7 @@ function relDate(ymd) {
 
 // --- Version & Flag Contract ---
 
-const LAKE_CLI_VERSION = '1.1.0';
+const LAKE_CLI_VERSION = '1.2.0';
 
 const VIEW_DEFAULTS = {
   resume: 'brief', // briefing-style digest (Goal/Done/Next/Blockers/Context, no journal) — AI can act directly from this

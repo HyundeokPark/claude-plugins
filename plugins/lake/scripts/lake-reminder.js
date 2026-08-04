@@ -3,13 +3,15 @@
 /**
  * PRD Lake Reminder Hook (PostToolUse)
  *
- * 30분마다 한 번씩 AI에게 /lake save 리마인더를 주입한다.
- * - inprogress 태스크가 있으면: "업데이트하세요"
- * - 없으면: "저장할 작업이 있으면 /lake save 하세요"
+ * 1. 도구 호출 이벤트를 세션 spool에 기록한다 (자동 저장의 원본 로그).
+ * 2. 60분마다 한 번씩 AI에게 /lake save 리마인더를 주입한다.
+ *    - inprogress 태스크가 있으면: "업데이트하세요"
+ *    - 없으면: "저장할 작업이 있으면 /lake save 하세요"
  */
 
 const fs = require('fs');
 const path = require('path');
+const spool = require('./lake-spool');
 
 const LAKE_DIR = path.join(process.env.HOME, '.claude', 'prd-lake');
 const INPROGRESS = path.join(LAKE_DIR, 'inprogress');
@@ -52,22 +54,36 @@ function hasInprogressTasks() {
   }
 }
 
-let message = '';
+async function main() {
+  const payload = await spool.readStdinJson();
 
-if (shouldRemind()) {
-  if (hasInprogressTasks()) {
-    message = '[PRD Lake] 진행 중인 작업이 있습니다. 변경사항이 있으면 `/lake save`로 업데이트하세요.';
-  } else {
-    message = '[PRD Lake] 저장할 작업이 있으면 `/lake save "제목"`으로 진행 상황을 저장하세요.';
+  spool.append(payload.session_id, {
+    e: 'tool',
+    name: payload.tool_name,
+    in: spool.briefInput(payload.tool_input),
+    out: spool.briefOutput(payload.tool_response),
+    cwd: payload.cwd,
+  });
+
+  let message = '';
+
+  if (shouldRemind()) {
+    if (hasInprogressTasks()) {
+      message = '[PRD Lake] 진행 중인 작업이 있습니다. 변경사항이 있으면 `/lake save`로 업데이트하세요.';
+    } else {
+      message = '[PRD Lake] 저장할 작업이 있으면 `/lake save "제목"`으로 진행 상황을 저장하세요.';
+    }
   }
+
+  // `message` 필드는 훅 규격에 없어 버려진다 — AI에게는 additionalContext로 주입해야 한다.
+  const result = {};
+  if (message) {
+    result.hookSpecificOutput = {
+      hookEventName: 'PostToolUse',
+      additionalContext: message,
+    };
+  }
+  process.stdout.write(JSON.stringify(result));
 }
 
-// `message` 필드는 훅 규격에 없어 버려진다 — AI에게는 additionalContext로 주입해야 한다.
-const result = {};
-if (message) {
-  result.hookSpecificOutput = {
-    hookEventName: 'PostToolUse',
-    additionalContext: message,
-  };
-}
-process.stdout.write(JSON.stringify(result));
+main().catch(() => process.stdout.write('{}'));

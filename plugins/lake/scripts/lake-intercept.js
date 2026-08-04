@@ -14,6 +14,7 @@
 const { execFileSync, execSync } = require('child_process');
 const { homedir } = require('os');
 const path = require('path');
+const spool = require('./lake-spool');
 
 const LAKE_CLI = process.env.LAKE_CLI_PATH ||
   path.join(homedir(), '.claude', 'prd-lake', 'lake-cli.js');
@@ -69,7 +70,15 @@ async function main() {
     const m = p.regex.exec(prompt);
     if (m) { matched = { p, m }; break; }
   }
-  if (!matched) return;
+  if (!matched) {
+    // 일반 프롬프트는 세션 spool에 기록 (인터셉트된 lake 메타 명령은 제외)
+    spool.append(payload.session_id, {
+      e: 'prompt',
+      text: spool.clip(prompt, 500),
+      cwd: payload.cwd,
+    });
+    return;
+  }
 
   const args = typeof matched.p.args === 'function'
     ? matched.p.args(matched.m)

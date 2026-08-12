@@ -165,8 +165,17 @@ function appendJournal(taskDir, journal, eventCount) {
 const AUTO_START = '<!-- lake:auto-context:start -->';
 const AUTO_END = '<!-- lake:auto-context:end -->';
 
-function updateContext(taskDir, context) {
+function updateContext(taskDir, context, lastEventTs) {
   const file = path.join(taskDir, 'context.md');
+  // 수동 save(/lake save)가 spool의 마지막 이벤트보다 나중에 context.md를 갱신했다면
+  // 그쪽이 더 최신 상태다 — 과거 이벤트를 요약한 auto-context로 되돌리지 않는다.
+  // (과거: 늦게 돈 compactor가 새 세션의 수동 정리를 낡은 요약으로 덮음)
+  try {
+    if (lastEventTs && fs.existsSync(file) && fs.statSync(file).mtimeMs > lastEventTs) {
+      log(`context-skip: ${path.basename(taskDir)} (수동 context.md가 spool보다 최신)`);
+      return;
+    }
+  } catch { /* stat 실패 시 그냥 진행 */ }
   const section = `${AUTO_START}\n## 자동 상태 (compactor)\n${context}\n${AUTO_END}`;
   let body = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '# Context\n';
   const start = body.indexOf(AUTO_START);
@@ -180,9 +189,9 @@ function updateContext(taskDir, context) {
   fs.writeFileSync(file, body);
 }
 
-function moveToUnfiled(spoolFile) {
+function moveToUnfiled(file, originalName) {
   fs.mkdirSync(UNFILED_DIR, { recursive: true });
-  fs.renameSync(spoolFile, path.join(UNFILED_DIR, path.basename(spoolFile)));
+  fs.renameSync(file, path.join(UNFILED_DIR, originalName));
 }
 
 function main() {
@@ -190,12 +199,29 @@ function main() {
   if (!spoolFile || !fs.existsSync(spoolFile)) return;
   const sessionId = path.basename(spoolFile, '.jsonl');
 
-  const events = readEvents(spoolFile);
+  // 이중 실행 방지 lock: 처리 전 원자적 rename으로 선점한다.
+  // SessionEnd 훅과 다른 세션의 SessionStart 고아 복구가 같은 spool을 동시에 잡아도
+  // rename은 한 쪽만 성공한다. (과거: 동일 spool 2회 처리 → journal 중복 append)
+  // 크래시로 방치된 .processing은 SessionStart 복구가 .jsonl로 되돌린다.
+  const procFile = spoolFile + '.processing';
+  try {
+    fs.renameSync(spoolFile, procFile);
+  } catch {
+    return; // 다른 compactor가 선점
+  }
+
+  const events = readEvents(procFile);
   if (events.length < MIN_EVENTS) {
-    fs.unlinkSync(spoolFile);
+    fs.unlinkSync(procFile);
     removeMarker(sessionId);
     return;
   }
+
+  // spool의 마지막 이벤트 시각 — context.md 수동 갱신이 이보다 나중이면 auto-context를 덮지 않는다
+  const lastEventTs = events.reduce((max, ev) => {
+    const t = new Date(ev.t || 0).getTime();
+    return t > max ? t : max;
+  }, 0);
 
   const { segments, unsegmented } = segmentByTask(events);
 
@@ -203,7 +229,7 @@ function main() {
   if (segments.length === 0) {
     const task = readActiveTask(sessionId);
     if (!task) {
-      moveToUnfiled(spoolFile);
+      moveToUnfiled(procFile, path.basename(spoolFile));
       log(`unfiled: ${path.basename(spoolFile)} (${events.length} events, no session marker)`);
       return;
     }
@@ -226,7 +252,7 @@ function main() {
         continue;
       }
       appendJournal(taskDir, blocks.journal, seg.events.length);
-      updateContext(taskDir, blocks.context);
+      updateContext(taskDir, blocks.context, lastEventTs);
       log(`ok: ${path.basename(spoolFile)} → ${seg.task.slug} (${seg.events.length} events)`);
     } catch (e) {
       failed++;
@@ -235,10 +261,12 @@ function main() {
   }
 
   if (failed === 0) {
-    fs.unlinkSync(spoolFile);
+    fs.unlinkSync(procFile);
     removeMarker(sessionId);
   } else {
-    // spool 유지 → 다음 세션에서 재시도 (성공한 구간은 재시도 시 journal에 중복될 수 있음 — log 참조)
+    // 실패 구간 재시도를 위해 spool 복원 → 다음 세션에서 재시도
+    // (성공한 구간은 재시도 시 journal에 중복될 수 있음 — log 참조)
+    try { fs.renameSync(procFile, spoolFile); } catch { /* best-effort */ }
     process.exitCode = 1;
   }
 }

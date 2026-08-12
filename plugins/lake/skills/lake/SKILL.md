@@ -47,16 +47,12 @@ Save work progress to `~/.claude/prd-lake/` per task, so you can instantly resto
     "project": "my-dashboard",
     "status": "inprogress",
     "created": "2026-04-10",
-    "updated": "2026-04-10",
-    "parent": "a1b2c3",
-    "children": ["23db04", "3415d8"]
+    "updated": "2026-04-10"
   }
 ]
 ```
 
-`parent` and `children` are optional. `parent` is the id of the parent epic. `children` is an array of child task ids. `relates` is an array of bidirectionally linked task ids. `tags` is an array of tag strings (without `#` prefix). `blocked_by` is an array of blocker task ids. `blocks` is an array of task ids this task blocks.
-
-`id` is a 6-char SHA1 hash of the slug. Users can reference tasks by hash prefix (e.g. `ce11`).
+Optional fields: `parent` (parent epic id), `children` (child task ids), `relates` (bidirectionally linked task ids), `tags` (tag strings without `#`), `blocked_by` (blocker task ids), `blocks` (task ids this task blocks). `id` is a 6-char SHA1 hash of the slug. Users can reference tasks by hash prefix (e.g. `ce11`).
 
 ### project registry — `projects.json` (optional, per-install)
 
@@ -109,10 +105,11 @@ Create or update a task folder and save spec/plan/context.
 1. Generate slug; auto-extract Project (git root) and Branch
 2. Check if folder exists → update (confirm) or create new
 3. AI drafts spec.md / plan.md / context.md from current session
-4. AskUserQuestion: "Saving with this content. Anything to change?"
-5. Write files; run `lake-cli.js upsert` to update index.json
-6. Append to `journal/{today}.md`
-7. AskUserQuestion: "Any artifacts to record? (path or skip)"
+4. **Reconcile plan.md (필수)**: 세션에서 완료·처리 확인된 항목을 `- [ ]`→`- [x]`로, 무효 항목은 수정/제거. resume brief의 "여기까지/이제 할 차례"는 **plan.md 체크박스에서만** 추출된다 — journal/context만 갱신하고 이걸 빼먹으면 다음 resume이 낡은 할 일을 보여준다.
+5. AskUserQuestion: "Saving with this content. Anything to change?"
+6. Write files; run `lake-cli.js upsert` to update index.json
+7. Append to `journal/{today}.md`
+8. AskUserQuestion: "Any artifacts to record? (path or skip)"
 
 Templates → see `references/templates.md`. `--parent` flag → see `references/epic-graph.md`.
 

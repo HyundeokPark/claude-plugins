@@ -181,13 +181,28 @@ function ensureLakeSetup() {
 }
 
 // 크래시 등으로 compactor가 처리 못 한 spool을 발견하면 재실행한다.
-// mtime 2분 이내는 동시에 살아있는 다른 세션일 수 있으므로 건너뛴다.
+// mtime 30분 이내는 살아있는 세션(열어두고 잠시 조용한 것 포함)일 수 있으므로 건너뛴다.
+// (기존 2분 가드는 조용히 열려있는 세션의 spool을 고아로 오판 → compact 후 마커까지
+// 지워버려 그 세션의 이후 기록이 unfiled로 빠졌다)
 function recoverOrphanSpools(currentSessionId) {
   if (process.env.LAKE_COMPACTOR === '1') return;
   if (!fs.existsSync(spool.SPOOL_DIR)) return;
 
-  const files = fs.readdirSync(spool.SPOOL_DIR).filter(f => f.endsWith('.jsonl'));
   const now = Date.now();
+
+  // 크래시한 compactor가 방치한 .processing lock 복원 (10분 이상 방치된 것만 —
+  // 그보다 어리면 지금 처리 중일 수 있다). 되돌린 파일은 아래 고아 복구가 다시 잡는다.
+  try {
+    for (const f of fs.readdirSync(spool.SPOOL_DIR)) {
+      if (!f.endsWith('.jsonl.processing')) continue;
+      const full = path.join(spool.SPOOL_DIR, f);
+      if (now - fs.statSync(full).mtimeMs > 10 * 60 * 1000) {
+        fs.renameSync(full, full.replace(/\.processing$/, ''));
+      }
+    }
+  } catch { /* 복원 실패해도 세션 시작 차단 안 함 */ }
+
+  const files = fs.readdirSync(spool.SPOOL_DIR).filter(f => f.endsWith('.jsonl'));
   let spawned = 0;
 
   for (const f of files) {
@@ -195,7 +210,7 @@ function recoverOrphanSpools(currentSessionId) {
     if (currentSessionId && f === `${currentSessionId}.jsonl`) continue;
     const full = path.join(spool.SPOOL_DIR, f);
     try {
-      if (now - fs.statSync(full).mtimeMs < 2 * 60 * 1000) continue;
+      if (now - fs.statSync(full).mtimeMs < 30 * 60 * 1000) continue;
       const child = spawn(process.execPath, [path.join(__dirname, 'lake-compactor.js'), full], {
         detached: true,
         stdio: 'ignore',

@@ -22,6 +22,9 @@ make_task() { # $1=slug
   mkdir -p "$LAKE/inprogress/$1/journal"
   printf -- '# %s\n- **Updated**: 2026-07-01 10:00\n' "$1" > "$LAKE/inprogress/$1/spec.md"
   printf -- '# Context\n- **Branch**: main\n' > "$LAKE/inprogress/$1/context.md"
+  # 픽스처는 "과거에 저장된 태스크"를 흉내낸다. context.md mtime이 spool 이벤트보다
+  # 최신이면 compactor가 수동 최신 보호로 auto-context를 스킵하므로 과거로 되돌린다.
+  touch -t 202607011000 "$LAKE/inprogress/$1/context.md"
 }
 
 set_marker() { # $1=session_id $2=slug — 세션별 마커
@@ -87,6 +90,7 @@ if [ "$ok" = 1 ]; then pass "AC-Compactor-Journal-Context"; else fail "AC-Compac
 
 echo "=== AC-Compactor-Context-Idempotent (재실행 시 auto 섹션 중복 없음) ==="
 for i in 1 2 3; do printf '{"t":"2026-08-04T10:0%s:00Z","e":"tool","name":"Bash","in":"command=x"}\n' "$i"; done > "$SPOOL/$SID.jsonl"
+touch -t 202608040900 "$c"  # 직전 compactor 기록(mtime=now)을 과거로 — 덮어쓰기 경로를 검증
 HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/$SID.jsonl"
 starts=$(grep -c 'lake:auto-context:start' "$c")
 if [ "$starts" = 1 ]; then pass "AC-Compactor-Context-Idempotent"; else fail "AC-Compactor-Context-Idempotent ($starts sections)"; fi
@@ -167,11 +171,32 @@ printf '{"session_id":"new-session"}' | HOME="$FAKE_HOME" node "$S/lake-session-
 sleep 2
 if [ ! -f "$SPOOL/crashed.jsonl" ]; then pass "AC-SessionStart-Crash-Recovery"; else fail "AC-SessionStart-Crash-Recovery"; fi
 
-echo "=== AC-SessionStart-Fresh-Spool-Untouched (2분 이내 spool은 건드리지 않음) ==="
+echo "=== AC-SessionStart-Fresh-Spool-Untouched (30분 이내 spool은 살아있는 세션으로 보고 건드리지 않음) ==="
 for i in 1 2 3; do printf '{"t":"2026-08-04T13:0%s:00Z","e":"tool","name":"Bash","in":"command=live"}\n' "$i"; done > "$SPOOL/live.jsonl"
 printf '{"session_id":"new-session"}' | HOME="$FAKE_HOME" node "$S/lake-session-start.js" > /dev/null 2>&1
 sleep 1
 if [ -f "$SPOOL/live.jsonl" ]; then pass "AC-SessionStart-Fresh-Spool-Untouched"; else fail "AC-SessionStart-Fresh-Spool-Untouched"; fi
+
+echo "=== AC-Compactor-Manual-Context-Fresher (수동 context.md가 spool보다 최신 → auto 스킵, journal은 기록) ==="
+make_task fresh-ctx
+set_marker fresh-sess fresh-ctx
+for i in 1 2 3; do printf '{"t":"2026-08-04T15:0%s:00Z","e":"tool","name":"Bash","in":"command=old"}\n' "$i"; done > "$SPOOL/fresh-sess.jsonl"
+touch "$LAKE/inprogress/fresh-ctx/context.md"   # 수동 save 흉내: spool(2026-08-04)보다 최신
+HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/fresh-sess.jsonl"
+today4=$(date -u +%Y-%m-%d)
+ok=1
+grep -q 'lake:auto-context:start' "$LAKE/inprogress/fresh-ctx/context.md" 2>/dev/null && ok=0  # 덮지 않음
+grep -q '스텁 시도' "$LAKE/inprogress/fresh-ctx/journal/$today4.md" 2>/dev/null || ok=0        # journal은 기록
+[ ! -f "$SPOOL/fresh-sess.jsonl" ] || ok=0                                                     # spool 정리됨
+if [ "$ok" = 1 ]; then pass "AC-Compactor-Manual-Context-Fresher"; else fail "AC-Compactor-Manual-Context-Fresher"; fi
+
+echo "=== AC-SessionStart-Stale-Processing-Recovery (방치된 .processing lock → 복원) ==="
+for i in 1 2 3; do printf '{"t":"2026-08-04T16:0%s:00Z","e":"tool","name":"Bash","in":"command=stuck"}\n' "$i"; done > "$SPOOL/stuck.jsonl.processing"
+touch -t 202601010000 "$SPOOL/stuck.jsonl.processing"
+printf '{"session_id":"new-session"}' | HOME="$FAKE_HOME" node "$S/lake-session-start.js" > /dev/null 2>&1
+sleep 2
+# 복원된 .jsonl은 곧바로 고아 복구가 compact할 수 있으므로 .processing 부재만 확인
+if [ ! -f "$SPOOL/stuck.jsonl.processing" ]; then pass "AC-SessionStart-Stale-Processing-Recovery"; else fail "AC-SessionStart-Stale-Processing-Recovery"; fi
 
 echo
 echo "================================"

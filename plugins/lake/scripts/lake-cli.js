@@ -26,6 +26,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const planlib = require('./lake-plan');
+const recaplib = require('./lake-recap');
 
 const LAKE_DIR = path.join(process.env.HOME, '.claude', 'prd-lake');
 const INDEX_PATH = path.join(LAKE_DIR, 'index.json');
@@ -204,7 +205,7 @@ function relDate(ymd) {
 
 // --- Version & Flag Contract ---
 
-const LAKE_CLI_VERSION = '1.4.0';
+const LAKE_CLI_VERSION = '1.5.0';
 
 const VIEW_DEFAULTS = {
   resume: 'brief', // briefing-style digest (Goal/Done/Next/Blockers/Context, no journal) — AI can act directly from this
@@ -657,16 +658,25 @@ function renderResumeFull(task, index, dir) {
   return out;
 }
 
+// 사람용 요약(📍) — spec.md 맨 위 섹션. Claude Code의 away_summary를 compactor가
+// 수확해 넣거나 사람이 직접 쓴다. 파싱 규칙은 lake-recap.js 하나만 쓴다 —
+// 같은 규칙을 여러 곳에 복사하면 형식이 어긋날 때 한쪽만 고쳐진다.
+function extractSpecHumanRecap(specText) {
+  return recaplib.extractFromSpec(specText);
+}
+
 // Extract spec Goal section, or fall back to frontmatter + next 20 lines
 function extractSpecGoal(specText) {
   if (!specText) return '';
-  const goalMatch = specText.match(/(^|\n)## Goal\s*\n([\s\S]*?)(?=\n## |\n# |$)/);
+  // 한글 문서가 많아 `## 목표`도 같은 것으로 취급한다. 못 찾으면 앞부분을 통째로
+  // 붙이는 폴백이 도는데, 그게 20줄 넘게 쏟아져 "정보 과다" 불만의 직접 원인이었다.
+  const goalMatch = specText.match(/(^|\n)## (?:Goal|목표)\s*\n([\s\S]*?)(?=\n## |\n# |$)/);
   if (goalMatch) {
     return '## Goal\n' + goalMatch[2].trim() + '\n';
   }
-  // Fallback: frontmatter/title + next 20 lines
+  // Fallback: 제목/메타 + 앞부분. 사람이 읽을 분량으로만 자른다.
   const lines = specText.split('\n');
-  return lines.slice(0, 22).join('\n') + '\n';
+  return lines.slice(0, 10).join('\n') + '\n';
 }
 
 function extractBlockersSection(contextText) {
@@ -904,6 +914,11 @@ function renderResumeMinimal(task, index, dir) {
   const project = task.project ? ` · ${task.project}` : '';
   out += `Status: ${task.status} · Updated: ${task.updated} (${ago})${project}${tags}\n`;
 
+  // 사람용 요약이 있으면 Status 바로 다음. 저널 첫 줄을 잘라오는 "Last"는 문장 중간에서
+  // 끊기기 일쑤라, 요약이 있으면 그게 이 view의 본문이 된다.
+  const humanRecap = extractSpecHumanRecap(readFileSafe(path.join(dir, 'spec.md')) || '');
+  if (humanRecap) out += `📍 ${humanRecap}\n`;
+
   // Pull the first non-heading bullet/sentence from the most recent journal —
   // skip date headers (# 2026-04-15) and section headers (## Work Done) so the
   // line we surface is the actual recent action, not boilerplate scaffolding.
@@ -963,6 +978,12 @@ function renderResumeBrief(task, index, dir) {
   const days = Math.max(0, daysSince(task.updated));
   const ago = days === 0 ? 'today' : days === 1 ? '1d ago' : `${days}d ago`;
   out += `=== ${task.title} [${task.id}] · ${task.status} · ${ago} ===\n\n`;
+
+  // 사람용 요약이 있으면 Goal보다 위에 온다 — 사람이 제일 먼저 읽는 자리다.
+  const humanRecap = extractSpecHumanRecap(specRaw);
+  if (humanRecap) {
+    out += `## 📍 사람용 요약\n${humanRecap}\n\n`;
+  }
 
   const goal = extractSpecGoal(specRaw);
   const goalClean = goal ? goal.replace(/^##?\s*Goal\s*\n?/i, '').trim() : '';

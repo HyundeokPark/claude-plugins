@@ -14,6 +14,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const spool = require('./lake-spool');
 const plan = require('./lake-plan');
+const recap = require('./lake-recap');
 
 const LAKE_DIR = path.join(process.env.HOME, '.claude', 'prd-lake');
 const INPROGRESS = path.join(LAKE_DIR, 'inprogress');
@@ -118,6 +119,18 @@ function readAutoContext(slug) {
   }
 }
 
+// 사람용 요약(📍) — spec.md 맨 위. Claude Code의 away_summary를 compactor가 수확한 것.
+// 대화 전체를 보고 쓴 문장이라 "현재/다음/블로커" 라벨 요약보다 상황 파악이 빠르다.
+function readHumanRecap(slug) {
+  try {
+    const s = fs.readFileSync(path.join(INPROGRESS, slug, 'spec.md'), 'utf-8');
+    const body = recap.extractFromSpec(s);
+    return body ? body.slice(0, 300) : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildBriefing(cwd) {
   try {
     const index = JSON.parse(fs.readFileSync(path.join(LAKE_DIR, 'index.json'), 'utf-8'));
@@ -136,8 +149,8 @@ function buildBriefing(cwd) {
     const lines = [];
     for (const t of inprog.slice(0, 3)) {
       lines.push(`- [${t.id}] ${t.title} (${t.project || '-'}, updated ${t.updated})`);
-      const auto = readAutoContext(t.slug);
-      if (auto) lines.push('  ' + auto.replace(/\n/g, '\n  '));
+      const state = readHumanRecap(t.slug) || readAutoContext(t.slug);
+      if (state) lines.push('  ' + state.replace(/\n/g, '\n  '));
       // 자동 기록(journal/context)은 훅이 갱신하지만 plan.md는 사람·AI 재량이라
       // 혼자 썩는다. 낡은 채로 브리핑하면 다음 세션이 죽은 할 일을 보고한다.
       const stale = plan.planStaleInfo(path.join(INPROGRESS, t.slug));
@@ -165,7 +178,7 @@ function ensureLakeSetup() {
 
   // lake-cli.js가 require하는 모듈을 **먼저** 배포한다. 순서가 뒤집히면
   // 새 cli는 배포됐는데 의존 모듈이 없는 순간이 생겨 lake 전체가 죽는다.
-  for (const dep of ['lake-plan.js']) {
+  for (const dep of ['lake-plan.js', 'lake-recap.js']) {
     const depSrc = path.join(__dirname, dep);
     if (!fs.existsSync(depSrc)) continue;
     const depDst = path.join(LAKE_DIR, dep);

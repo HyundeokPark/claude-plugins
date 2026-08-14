@@ -9,6 +9,11 @@ description: spec/plan/context/journal/artifacts 템플릿
 
 ```markdown
 # {title}
+
+## 📍 사람용 요약
+<!-- lake:auto-recap -->
+({yyyy-MM-dd}) {2~3문장. 무엇을 하던 중 → 어디까지 됐다 → 다음은 이것.}
+
 - **Project**: {project}
 - **Created**: {yyyy-MM-dd HH:mm}
 - **Updated**: {yyyy-MM-dd HH:mm}
@@ -22,6 +27,11 @@ description: spec/plan/context/journal/artifacts 템플릿
 ## Requirements
 {Requirements list}
 ```
+
+`## 📍 사람용 요약`은 **세션 종료 시 compactor가 자동으로 채운다** (Claude Code의
+away_summary 수확 → 없으면 haiku). `<!-- lake:auto-recap -->` 마커가 붙은 것만 자동
+갱신 대상이며, 마커를 지우고 직접 쓰면 그 뒤로는 자동이 덮지 않는다.
+`/lake save`에서 손으로 고쳐도 된다 — 상세는 `references/advanced.md`.
 
 ## plan.md template
 

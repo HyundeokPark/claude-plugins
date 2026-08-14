@@ -327,6 +327,59 @@ $CLI resume blockers-leak --view=summary > $TMP/bl2.out
 grep -q 'lake:auto-context' $TMP/bl2.out && ok=0
 if [ "$ok" = 1 ]; then pass "AC-Blockers-No-Marker-Leak"; else fail "AC-Blockers-No-Marker-Leak"; fi
 
+echo "=== AC-Recap-Rendered (📍가 brief 최상단·recap view에 노출, 마커는 숨김) ==="
+make_plan_task recap-render '# Plan
+
+## Checklist
+- [ ] 할 일
+'
+printf -- '# recap-render\n\n## 📍 사람용 요약\n<!-- lake:auto-recap -->\n(2026-08-14) 뭘 하던 중이고 여기까지 됐습니다. 다음은 저것입니다.\n\n- **Project**: t\n- **Updated**: 2026-08-01\n\n## Goal\n원래 목표.\n' \
+  > "$PLAN_LAKE/inprogress/recap-render/spec.md"
+$CLI resume recap-render > $TMP/rr.out
+$CLI resume recap-render --view=recap > $TMP/rr2.out
+ok=1
+grep -q '## 📍 사람용 요약' $TMP/rr.out || ok=0
+grep -q '뭘 하던 중이고 여기까지 됐습니다' $TMP/rr.out || ok=0
+grep -q 'lake:auto-recap' $TMP/rr.out && ok=0                      # 기계용 마커 노출 금지
+# 📍가 📌보다 위 (사람이 제일 먼저 읽는 자리)
+[ "$(grep -n '📍' $TMP/rr.out | head -1 | cut -d: -f1)" -lt "$(grep -n '📌' $TMP/rr.out | head -1 | cut -d: -f1)" ] || ok=0
+grep -q '📍 (2026-08-14) 뭘 하던 중이고' $TMP/rr2.out || ok=0       # recap view는 Status 다음 한 줄
+grep -q 'lake:auto-recap' $TMP/rr2.out && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Recap-Rendered"; else fail "AC-Recap-Rendered"; fi
+
+echo "=== AC-Recap-Section-Bounded (요약 섹션이 뒤 메타데이터를 삼키지 않는다) ==="
+# 실 데이터에서 터졌다: 메타데이터를 `- **Updated**:` 대신 `**Updated:**`(대시 없는 볼드)로
+# 쓴 spec에서, 종료 조건이 `- **` 뿐이라 메타 블록 전체가 요약으로 빨려 들어갔다.
+make_plan_task recap-bound '# Plan
+
+## Checklist
+- [ ] 할 일
+'
+printf -- '# recap-bound\n\n## 📍 사람용 요약\n<!-- lake:auto-recap -->\n(2026-08-14) 진짜 요약 한 문단.\n\n**Updated:** 2026-08-11\n**상태:** 삼켜지면 안 되는 메타\n\n---\n\n## 목표\n목표 한 줄.\n' \
+  > "$PLAN_LAKE/inprogress/recap-bound/spec.md"
+$CLI resume recap-bound > $TMP/rb.out
+ok=1
+grep -q '진짜 요약 한 문단' $TMP/rb.out || ok=0
+grep -q '삼켜지면 안 되는 메타' $TMP/rb.out && ok=0
+grep -q '목표 한 줄' $TMP/rb.out || ok=0            # Goal은 정상 추출
+if [ "$ok" = 1 ]; then pass "AC-Recap-Section-Bounded"; else fail "AC-Recap-Section-Bounded"; fi
+
+echo "=== AC-Goal-Korean-Heading (## 목표 인식 — 앞부분 통째 덤프 방지) ==="
+# `## Goal`만 찾던 탓에 한글 spec은 폴백으로 앞 22줄이 쏟아졌다 ("정보 과다"의 직접 원인).
+make_plan_task goal-ko '# Plan
+
+## Checklist
+- [ ] 할 일
+'
+printf -- '# goal-ko\n- **Project**: t\n- **Updated**: 2026-08-01\n\n**상태:** 잡다한 머리말\n\n---\n\n## 목표\n한 줄 목표다.\n\n## 딴 섹션\n안 나와야 한다.\n' \
+  > "$PLAN_LAKE/inprogress/goal-ko/spec.md"
+$CLI resume goal-ko > $TMP/gk.out
+ok=1
+grep -q '한 줄 목표다' $TMP/gk.out || ok=0
+grep -q '잡다한 머리말' $TMP/gk.out && ok=0
+grep -q '안 나와야 한다' $TMP/gk.out && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Goal-Korean-Heading"; else fail "AC-Goal-Korean-Heading"; fi
+
 echo ""
 echo "================================"
 echo "Results: $PASS passed, $FAIL failed"

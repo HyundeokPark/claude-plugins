@@ -102,6 +102,10 @@ Create or update a task folder and save spec/plan/context.
 > **"다음 할 일"의 단일 정본은 `plan.md`다.** context.md의 `<!-- lake:auto-context -->`는
 > compactor가 쓰는 **최근 활동 로그**이지 할 일 목록이 아니다. 둘이 다르면 plan.md가 이긴다.
 
+> **사람용 요약(`## 📍`)은 직접 쓰지 않아도 된다.** 세션 종료 시 compactor가 Claude Code의
+> away_summary를 수확해 spec.md 맨 위에 넣는다. `<!-- lake:auto-recap -->` 마커가 붙은 것만
+> 자동 갱신되니, 손으로 고치고 싶으면 마커를 지우면 그 뒤로 자동이 덮지 않는다.
+
 Templates → see `references/templates.md`. `--parent` flag → see `references/epic-graph.md`.
 
 ### `/lake list`

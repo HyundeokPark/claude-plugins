@@ -17,6 +17,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync, execFileSync } = require('child_process');
+const recap = require('./lake-recap');
 
 const LAKE_DIR = path.join(process.env.HOME, '.claude', 'prd-lake');
 const INPROGRESS = path.join(LAKE_DIR, 'inprogress');
@@ -115,6 +116,10 @@ function buildPrompt(task, events) {
    시간순으로 다음만 bullet(-)로 남긴다: 시도한 것, 결과(성공/실패와 에러 내용),
    내린 결정과 그 근거, 새로 확정한 사실. 5~15줄. 구체적 파일명/명령/값을 보존할 것.
 2) CONTEXT — 현재 상태 스냅숏. "현재:", "다음:", "블로커:" 세 줄 형식, 각 1~2문장.
+3) RECAP — 사람이 읽는 요약. 2~3문장, 120~180자. 라벨·불릿·마크다운 금지, 줄바꿈 없이.
+   "무엇을 하던 중인지 → 어디까지 됐는지 → 다음은 무엇인지" 순서로 자연스러운 한국어 서술.
+   예: "HeyPoll 시크릿을 금고로 옮기는 작업이고, 로컬 검증은 backend·scheduler 모두 통과했습니다.
+   다음은 콘솔에서 금고를 만들고 값 20개를 넣는 것입니다."
 
 출력 형식을 정확히 지켜라 (다른 텍스트 금지):
 ===JOURNAL===
@@ -123,6 +128,8 @@ function buildPrompt(task, events) {
 현재: ...
 다음: ...
 블로커: ...
+===RECAP===
+...
 
 --- 활동 로그 ---
 ${renderEvents(events)}`;
@@ -145,9 +152,13 @@ function parseBlocks(output) {
   const m = output.match(/===JOURNAL===\s*([\s\S]*?)===CONTEXT===\s*([\s\S]*)/);
   if (!m) return null;
   const journal = m[1].trim();
-  const context = m[2].trim();
+  // RECAP은 선택 블록이다 — 없어도 실패시키지 않는다 (사람용 요약은 away_summary
+  // 수확이 1순위이고 이건 폴백일 뿐, 이것 때문에 journal/context를 버리면 손해다).
+  const rest = m[2].split(/===RECAP===/);
+  const context = rest[0].trim();
+  const recapText = (rest[1] || '').trim();
   if (!journal || !context) return null;
-  return { journal, context };
+  return { journal, context, recap: recapText || null };
 }
 
 function appendJournal(taskDir, journal, eventCount) {
@@ -253,6 +264,25 @@ function main() {
       }
       appendJournal(taskDir, blocks.journal, seg.events.length);
       updateContext(taskDir, blocks.context, lastEventTs);
+
+      // 사람용 요약(📍): Claude Code가 이미 쓴 away_summary를 1순위로 수확한다.
+      // 대화 전체를 보고 쓴 것이라 spool(도구 호출·프롬프트만)로 만든 것보다 정확하다.
+      // 없는 세션(자리를 비우지 않았으면 안 생긴다)은 haiku RECAP 블록으로 대체.
+      try {
+        const harvested = recap.harvest(sessionId, seg.events, recap.eventsCwd(seg.events));
+        const text = harvested || blocks.recap;
+        if (text) {
+          const source = harvested ? 'away_summary' : 'haiku';
+          const result = recap.writeRecap(taskDir, text, new Date().toISOString().slice(0, 10));
+          log(`recap-${result}: ${seg.task.slug} (${source})`);
+        } else {
+          log(`recap-none: ${seg.task.slug}`);
+        }
+      } catch (e) {
+        // 사람용 요약 실패는 journal/context 저장을 되돌릴 이유가 못 된다
+        log(`recap-error: ${seg.task.slug}: ${e.message}`);
+      }
+
       log(`ok: ${path.basename(spoolFile)} → ${seg.task.slug} (${seg.events.length} events)`);
     } catch (e) {
       failed++;

@@ -226,8 +226,92 @@ echo "=== AC-Plan-Dep-Deployed (lake-cli 의존 모듈이 prd-lake로 함께 배
 # lake-cli.js는 ~/.claude/prd-lake/로 단독 배포된다. require 대상이 같이 안 가면 lake가 죽는다.
 ok=1
 [ -f "$LAKE/lake-plan.js" ] || ok=0
+[ -f "$LAKE/lake-recap.js" ] || ok=0
 HOME="$FAKE_HOME" node "$LAKE/lake-cli.js" plan-check stale-plan > /dev/null 2>&1 || ok=0
+HOME="$FAKE_HOME" node "$LAKE/lake-cli.js" resume stale-plan > /dev/null 2>&1 || ok=0
 if [ "$ok" = 1 ]; then pass "AC-Plan-Dep-Deployed"; else fail "AC-Plan-Dep-Deployed"; fi
+
+# --- 사람용 요약(📍) 수확 (v1.10.0) ---
+# Claude Code가 트랜스크립트에 남긴 away_summary를 주워 spec.md에 넣는다.
+# 만들지 않고 수확하는 이유: away_summary는 대화 전체를 보고 쓴 것이고,
+# spool에는 도구 호출·프롬프트만 있어 같은 품질이 안 나온다.
+
+write_transcript() { # $1=session_id  $2=cwd  $3=ts  $4=content
+  local dir="$FAKE_HOME/.claude/projects/$(printf '%s' "$2" | tr '/' '-')"
+  mkdir -p "$dir"
+  printf '{"type":"system","subtype":"away_summary","content":"%s","timestamp":"%s","sessionId":"%s"}\n' \
+    "$4" "$3" "$1" > "$dir/$1.jsonl"
+}
+
+spool_events() { # $1=session_id — 2026-08-04T10:0X 창의 이벤트 3개
+  for i in 1 2 3; do
+    printf '{"t":"2026-08-04T10:0%s:00Z","e":"tool","name":"Bash","in":"command=x","cwd":"/w/proj"}\n' "$i"
+  done > "$SPOOL/$1.jsonl"
+}
+
+echo "=== AC-Recap-Harvest (away_summary를 spec.md 📍 섹션으로 수확) ==="
+make_task recap-h; set_marker recap-sess recap-h
+spool_events recap-sess
+write_transcript recap-sess /w/proj 2026-08-04T10:02:30Z "작업 진행 중입니다. 검증 끝났고 다음은 배포입니다."
+HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/recap-sess.jsonl"
+spec="$LAKE/inprogress/recap-h/spec.md"
+ok=1
+grep -q '## 📍 사람용 요약' "$spec" 2>/dev/null || ok=0
+grep -q '작업 진행 중입니다. 검증 끝났고 다음은 배포입니다.' "$spec" 2>/dev/null || ok=0
+grep -q 'lake:auto-recap' "$spec" 2>/dev/null || ok=0          # 자동 생성 표시
+grep -q 'recap-written\|recap-created' "$SPOOL/compactor.log" 2>/dev/null || ok=0
+# 제목 바로 아래 = 2~4행 안에 와야 한다 (메타데이터 불릿보다 위)
+[ "$(grep -n '## 📍' "$spec" | cut -d: -f1)" -le 4 ] || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Recap-Harvest"; else fail "AC-Recap-Harvest"; fi
+
+echo "=== AC-Recap-Window (다른 태스크 시간대의 요약은 가져오지 않는다) ==="
+# 한 세션이 여러 태스크를 오갈 수 있다. 창을 안 보면 남의 상태를 적게 된다.
+make_task recap-w; set_marker recapw-sess recap-w
+spool_events recapw-sess
+write_transcript recapw-sess /w/proj 2020-01-01T00:00:00Z "창 밖의 낡은 요약이다."
+HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/recapw-sess.jsonl"
+ok=1
+grep -q '창 밖의 낡은 요약' "$LAKE/inprogress/recap-w/spec.md" 2>/dev/null && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Recap-Window"; else fail "AC-Recap-Window"; fi
+
+echo "=== AC-Recap-Fallback (away_summary 없으면 haiku RECAP 블록으로 대체) ==="
+STUB2="$TMP/stub2.js"
+cat > "$STUB2" <<'EOF'
+process.stdin.resume();
+process.stdin.on('end', () => {
+  console.log('===JOURNAL===\n- 스텁 시도 → 성공\n===CONTEXT===\n현재: 스텁\n다음: 스텁\n블로커: 없음\n===RECAP===\n폴백 요약입니다. 여기까지 됐고 다음은 저것입니다.');
+});
+process.stdin.on('data', () => {});
+EOF
+make_task recap-f; set_marker recapf-sess recap-f
+spool_events recapf-sess   # 트랜스크립트를 만들지 않는다 → 수확 실패
+ok=1
+LAKE_SUMMARIZER_CMD="node $STUB2" HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/recapf-sess.jsonl"
+grep -q '폴백 요약입니다' "$LAKE/inprogress/recap-f/spec.md" 2>/dev/null || ok=0
+grep -q 'recap-.*(haiku)' "$SPOOL/compactor.log" 2>/dev/null || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Recap-Fallback"; else fail "AC-Recap-Fallback"; fi
+
+echo "=== AC-Recap-Manual-Kept (사람이 쓴 요약은 덮지 않는다) ==="
+make_task recap-m; set_marker recapm-sess recap-m
+# 마커 없는 요약 = 사람이 쓴 것
+printf -- '# recap-m\n\n## 📍 사람용 요약\n사람이 직접 쓴 요약이다.\n\n- **Updated**: 2026-07-01 10:00\n' \
+  > "$LAKE/inprogress/recap-m/spec.md"
+spool_events recapm-sess
+write_transcript recapm-sess /w/proj 2026-08-04T10:02:30Z "자동이 덮으려 한 요약."
+HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/recapm-sess.jsonl"
+ok=1
+grep -q '사람이 직접 쓴 요약이다' "$LAKE/inprogress/recap-m/spec.md" 2>/dev/null || ok=0
+grep -q '자동이 덮으려 한 요약' "$LAKE/inprogress/recap-m/spec.md" 2>/dev/null && ok=0
+grep -q 'recap-manual-kept' "$SPOOL/compactor.log" 2>/dev/null || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Recap-Manual-Kept"; else fail "AC-Recap-Manual-Kept"; fi
+
+echo "=== AC-Recap-Briefing (SessionStart 브리핑이 📍를 우선 사용) ==="
+printf '[{"id":"rh0001","slug":"recap-h","title":"Recap H","project":"t","status":"inprogress","created":"2026-08-01","updated":"2026-08-14"}]\n' > "$LAKE/index.json"
+rb_out=$(printf '{"session_id":"rb-sess","cwd":"/tmp"}' | HOME="$FAKE_HOME" node "$S/lake-session-start.js" 2>/dev/null)
+ok=1
+echo "$rb_out" | grep -q '검증 끝났고 다음은 배포입니다' || ok=0
+echo "$rb_out" | grep -q 'lake:auto-recap' && ok=0     # 기계용 마커는 주입하지 않는다
+if [ "$ok" = 1 ]; then pass "AC-Recap-Briefing"; else fail "AC-Recap-Briefing"; fi
 
 echo
 echo "================================"

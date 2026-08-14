@@ -235,7 +235,9 @@ function extractBlockerBullets(contextText) {
     if (!/^[-*]\s/.test(line)) continue;
     const body = line.replace(/^[-*]\s*/, '').trim();
     if (!body) continue;
-    if (/^없(음|다)\.?$/.test(body)) continue; // "없음" 은 블로커가 아니다
+    // "없음"으로 시작하는 줄은 블로커가 아니다. 뒤에 해소 경위를 덧붙여 쓰는 경우가
+    // 많아 정확히 "없음"일 때만 걸러내면 그 설명이 블로커로 오인된다.
+    if (/^없(음|다)(?![가-힣])/.test(body)) continue;
     out.push(body);
   }
   return out;

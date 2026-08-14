@@ -673,7 +673,10 @@ function extractBlockersSection(contextText) {
   if (!contextText) return '';
   const m = contextText.match(/(^|\n)## Blockers\s*\n([\s\S]*?)(?=\n## |\n# |$)/);
   if (!m) return '';
-  return '## Blockers\n' + m[2].trimEnd() + '\n';
+  // compactor의 `<!-- lake:auto-context:start -->` 마커가 Blockers와 그 다음 헤딩 사이에
+  // 있으면 여기까지 같이 빨려 들어와 사용자 화면에 주석이 새어나온다.
+  const body = m[2].split('\n').filter(line => !/^\s*<!--/.test(line)).join('\n');
+  return '## Blockers\n' + body.trimEnd() + '\n';
 }
 
 function extractLatestDecision(contextText) {
@@ -829,7 +832,12 @@ function renderResumeSummary(task, index, dir) {
   }
 
   // Context non-blocker (Decisions + other sections)
-  const contextNonBlocker = contextRaw.replace(/(^|\n)## Blockers\s*\n[\s\S]*?(?=\n## |\n# |$)/, '').trim();
+  // compactor 마커(`<!-- lake:auto-context:* -->`)는 기계용 구분자다. 내용은 남기고
+  // 마커 줄만 지운다 — 안 지우면 사용자 화면에 주석이 그대로 노출된다.
+  const contextNonBlocker = contextRaw
+    .replace(/(^|\n)## Blockers\s*\n[\s\S]*?(?=\n## |\n# |$)/, '')
+    .split('\n').filter(line => !/^\s*<!--/.test(line)).join('\n')
+    .trim();
   if (contextNonBlocker) {
     const [maxL, maxC] = RESUME_SECTION_BUDGETS.context;
     const budgetC = Math.min(maxC, Math.max(0, remaining));

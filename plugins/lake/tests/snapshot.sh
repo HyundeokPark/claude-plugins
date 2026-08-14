@@ -309,6 +309,24 @@ diff -q $TMP/pl-s2.out $GOLDEN/resume-full-small.txt > /dev/null || ok=0
 grep -qE '저널보다 낡음|⏳ 대기중' $TMP/pl-s1.out && ok=0
 if [ "$ok" = 1 ]; then pass "AC-Plan-Legacy-Unchanged"; else fail "AC-Plan-Legacy-Unchanged"; fi
 
+echo "=== AC-Blockers-No-Marker-Leak (auto-context 마커 주석이 Blockers로 새지 않는다) ==="
+# Blockers와 다음 헤딩 사이에 compactor 마커가 있으면 섹션 추출이 주석까지 긁어와
+# 사용자 화면에 `<!-- lake:auto-context:start -->` 가 노출됐다 (v1.7.0~v1.9.0).
+make_plan_task blockers-leak '# Plan
+
+## Checklist
+- [ ] 할 일
+'
+printf -- '# Context\n- **Branch**: main\n\n## Blockers\n- 실제 블로커\n\n<!-- lake:auto-context:start -->\n## 자동 상태 (compactor)\n현재: 자동 요약\n<!-- lake:auto-context:end -->\n' \
+  > "$PLAN_LAKE/inprogress/blockers-leak/context.md"
+$CLI resume blockers-leak > $TMP/bl.out
+ok=1
+grep -q '실제 블로커' $TMP/bl.out || ok=0
+grep -q 'lake:auto-context' $TMP/bl.out && ok=0
+$CLI resume blockers-leak --view=summary > $TMP/bl2.out
+grep -q 'lake:auto-context' $TMP/bl2.out && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Blockers-No-Marker-Leak"; else fail "AC-Blockers-No-Marker-Leak"; fi
+
 echo ""
 echo "================================"
 echo "Results: $PASS passed, $FAIL failed"

@@ -18,12 +18,14 @@
  *   node lake-cli.js block <blocked> <blocker># Mark task as blocked by another
  *   node lake-cli.js unblock <blocked> <blocker># Remove blocked-by link
  *   node lake-cli.js summary <hash-or-slug> # One-line task summary
+ *   node lake-cli.js plan-check <hash-or-slug># plan.md ↔ journal/blockers 불일치 후보 추출
  *   node lake-cli.js version                # Print version + git hash
  */
 
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const planlib = require('./lake-plan');
 
 const LAKE_DIR = path.join(process.env.HOME, '.claude', 'prd-lake');
 const INDEX_PATH = path.join(LAKE_DIR, 'index.json');
@@ -202,7 +204,7 @@ function relDate(ymd) {
 
 // --- Version & Flag Contract ---
 
-const LAKE_CLI_VERSION = '1.3.0';
+const LAKE_CLI_VERSION = '1.4.0';
 
 const VIEW_DEFAULTS = {
   resume: 'brief', // briefing-style digest (Goal/Done/Next/Blockers/Context, no journal) — AI can act directly from this
@@ -244,7 +246,7 @@ const LIST_MAX_INPROGRESS = 15;
 const LIST_MAX_DONE = 3;
 
 const USAGE = `Usage: lake-cli.js <command> [args]
-Commands: list, resume, save, done, search, summary, version,
+Commands: list, resume, save, done, search, summary, plan-check, version,
           link, unlink, tree, relate, unrelate, tag, untag, block, unblock, rebuild, find, upsert
 Views: resume --view=summary|full|minimal|files   (v1 default: full)
        list   --view=default|compressed|tree|all  (v1 default: default)
@@ -940,6 +942,16 @@ function renderResumeBrief(task, index, dir) {
   const contextRaw = readFileSafe(path.join(dir, 'context.md')) || '';
 
   let out = '';
+
+  // plan.md가 저널보다 낡았으면 제일 먼저 경고한다. journal/context/index는 훅이
+  // 자동 갱신하는데 plan.md만 사람·AI 재량이라 plan.md만 썩고, brief의 "이제 할 차례"는
+  // plan.md에서만 나온다. 사람이 이 사고를 즉시 알아챌 수 있는 유일한 지점이다.
+  const stale = planlib.planStaleInfo(dir);
+  if (stale) {
+    out += `⚠ plan.md가 저널보다 낡음 (plan ${stale.planDate} < journal ${stale.journalDate}) — 할 일 목록을 신뢰하지 마세요\n`;
+    out += `  → \`lake-cli.js plan-check ${task.id}\` 로 불일치 후보를 확인할 것.\n\n`;
+  }
+
   const days = Math.max(0, daysSince(task.updated));
   const ago = days === 0 ? 'today' : days === 1 ? '1d ago' : `${days}d ago`;
   out += `=== ${task.title} [${task.id}] · ${task.status} · ${ago} ===\n\n`;
@@ -965,9 +977,22 @@ function renderResumeBrief(task, index, dir) {
     out += `## ✅ 여기까지 (최근 완료)\n${resolvedRecent.join('\n')}\n\n`;
   }
 
+  // "이제 할 차례"에는 `- [ ]`(착수 가능)만. `- [~]`(대기)·`- [-]`(폐기)는 여기 오면 안 된다.
   const unresolved = extractPlanUnresolvedTop(planRaw, 3);
   if (unresolved.length > 0) {
     out += `## ▶ 이제 할 차례\n${unresolved.join('\n')}\n\n`;
+  }
+
+  // 대기 항목은 지금 착수할 수 없으므로 할 일과 섞지 않는다. 다만 숨기면 잊히므로
+  // 해제조건과 함께 별도 섹션으로 보여주고, until이 지났으면 착수 가능해졌다고 알린다.
+  const waiting = planlib.planItemsByState(planRaw, 'waiting');
+  if (waiting.length > 0) {
+    const todayStr = planlib.localDate(Date.now());
+    const lines = waiting.slice(0, 5).map(it => {
+      const overdue = it.until && it.until < todayStr;
+      return `- ${it.body}${overdue ? `  ⚠ 기한 지남 (until ${it.until})` : ''}`;
+    });
+    out += `## ⏳ 대기중 (외부 이벤트)\n${lines.join('\n')}\n\n`;
   }
 
   const blockers = extractBlockersSection(contextRaw);
@@ -995,8 +1020,73 @@ function renderResumeBrief(task, index, dir) {
     out += `## 🔗 Context\n${ctxLines.map(l => '- ' + l).join('\n')}\n\n`;
   }
 
+  // 폐기 항목은 brief에서 숨기되, 존재 자체는 알린다 (조용히 감추면 같은 논의가 재발한다).
+  const dropped = planlib.planItemsByState(planRaw, 'dropped');
+  if (dropped.length > 0) {
+    out += `(폐기 ${dropped.length}건 숨김 — --view=full 에서 확인)\n`;
+  }
+
   out += '(brief · --view=full for journal/history, --view=recap for one-line check)\n';
   return out;
+}
+
+// plan.md ↔ journal/Blockers 불일치 후보를 코드가 뽑아준다.
+// v1.8.1은 SKILL.md에 "reconcile 필수"라는 산문 지시만 넣었고 또 안 지켜졌다.
+// 사람이 성실히 기억하는 대신, save 절차가 이 커맨드를 실행하고 후보마다
+// 체크/대기/폐기/유지 중 하나를 판정하게 만든다.
+function cmdPlanCheck(query) {
+  const index = readIndex();
+  const task = findTask(index, query);
+  const dir = taskDir(task);
+  const planRaw = readFileSafe(path.join(dir, 'plan.md')) || '';
+  const contextRaw = readFileSafe(path.join(dir, 'context.md')) || '';
+
+  let out = `=== plan-check: ${task.title} [${task.id}] ===\n\n`;
+
+  const stale = planlib.planStaleInfo(dir);
+  out += '## 1) stale 검사\n';
+  out += stale
+    ? `⚠ plan.md가 저널보다 낡음 (plan ${stale.planDate} < journal ${stale.journalDate})\n`
+    : 'OK — plan.md가 최신 저널보다 오래되지 않았다.\n';
+  out += '\n';
+
+  const candidates = planlib.findReconcileCandidates(dir, planRaw);
+  const CANDIDATE_LIMIT = 12;
+  const shown = candidates.slice(0, CANDIDATE_LIMIT);
+  out += `## 2) 미체크 항목 ↔ 최신 저널 불일치 후보 (${candidates.length}건)\n`;
+  if (candidates.length === 0) {
+    out += '없음.\n';
+  } else {
+    const label = { done: '완료로 보임 → [x]', waiting: '대기로 보임 → [~]', dropped: '폐기로 보임 → [-]' };
+    for (const c of shown) {
+      out += `- [ ] ${c.item.body}\n`;
+      out += `  ↳ journal ${c.evidence.file}: ${c.evidence.text}\n`;
+      out += `  ↳ 신호 "${c.signal}" → ${label[c.verdict] || c.verdict} (판정 필요: 체크/대기/폐기/유지)\n`;
+    }
+    if (candidates.length > shown.length) {
+      out += `… ${candidates.length - shown.length}건 더 있음 (상위 ${CANDIDATE_LIMIT}건만 표시)\n`;
+    }
+  }
+  out += '\n';
+
+  const contradictions = planlib.findBlockerContradictions(planRaw, contextRaw);
+  out += `## 3) Blockers ↔ plan 모순 후보 (${contradictions.length}건)\n`;
+  if (contradictions.length === 0) {
+    out += '없음.\n';
+  } else {
+    for (const c of contradictions) {
+      out += `- Blocker "${c.blocker}"\n  ↳ plan에선 이미 닫힘: - [x] ${c.item.body}\n`;
+    }
+  }
+  out += '\n';
+
+  const counts = { open: 0, done: 0, waiting: 0, dropped: 0 };
+  for (const it of planlib.parsePlanItems(planRaw)) counts[it.state]++;
+  out += `## 4) 현재 상태 (착수가능 ${counts.open} / 완료 ${counts.done} / 대기 ${counts.waiting} / 폐기 ${counts.dropped})\n`;
+  out += '판정 어휘: `- [ ]` 착수 가능 / `- [x]` 완료 / `- [~] (until: YYYY-MM-DD)` 대기 / `- [-] (폐기 YYYY-MM-DD) 사유`\n';
+  out += '폐기 항목은 삭제하지 말 것 — 같은 논의가 재발한다.\n';
+
+  process.stdout.write(out);
 }
 
 function renderResumeFiles(task, index, dir) {
@@ -1483,6 +1573,7 @@ switch (cmd) {
   case 'block':   cmdBlock(args[0], args[1]); break;
   case 'unblock': cmdUnblock(args[0], args[1]); break;
   case 'summary': cmdSummary(args[0]); break;
+  case 'plan-check': cmdPlanCheck(args[0]); break;
   case 'version': cmdVersion(); break;
   case 'help':
   case '-h':

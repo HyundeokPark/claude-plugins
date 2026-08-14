@@ -197,6 +197,118 @@ else
   fail "AC-Shared-TZ-Determinism"
 fi
 
+# --- plan.md 상태 어휘 + stale 감지 (v1.9.0) ---
+# 이 블록은 기존 골든 AC 뒤에 온다 — 픽스처를 추가하면 list/search 골든이 깨진다.
+
+PLAN_LAKE="$FAKE_HOME/.claude/prd-lake"
+make_plan_task() { # $1=slug  $2=plan.md 본문
+  mkdir -p "$PLAN_LAKE/inprogress/$1/journal"
+  printf -- '# %s\n- **Project**: t\n- **Created**: 2026-08-01\n- **Updated**: 2026-08-01\n\n## Goal\n판정 어휘 검증용.\n' "$1" \
+    > "$PLAN_LAKE/inprogress/$1/spec.md"
+  printf -- '# Context\n- **Branch**: main\n' > "$PLAN_LAKE/inprogress/$1/context.md"
+  printf -- '%s' "$2" > "$PLAN_LAKE/inprogress/$1/plan.md"
+  node -e "
+const fs=require('fs');const p='$PLAN_LAKE/index.json';
+const idx=JSON.parse(fs.readFileSync(p,'utf8'));
+idx.push({id:'$1'.slice(0,6),slug:'$1',title:'$1',project:'t',status:'inprogress',created:'2026-08-01',updated:'2026-08-01'});
+fs.writeFileSync(p,JSON.stringify(idx,null,2));"
+}
+
+echo "=== AC-Plan-Dropped-Not-Next (폐기 [-] 가 '이제 할 차례'에 안 나온다) ==="
+make_plan_task plan-dropped '# Plan
+
+## Checklist
+- [x] 끝난 일
+- [ ] 살아있는 할 일
+- [-] (폐기 2026-08-13) 죽은 할 일 — 존재하지 않는 도구
+'
+$CLI resume plan-dropped > $TMP/pd.out
+next_block=$(sed -n '/## ▶ 이제 할 차례/,/^$/p' $TMP/pd.out)
+ok=1
+printf '%s' "$next_block" | grep -q '살아있는 할 일' || ok=0
+printf '%s' "$next_block" | grep -q '죽은 할 일' && ok=0
+grep -q '폐기 1건 숨김' $TMP/pd.out || ok=0
+# 폐기 항목은 삭제가 아니라 숨김 — full view에는 그대로 있어야 한다
+$CLI resume plan-dropped --view=full | grep -q '죽은 할 일' || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Plan-Dropped-Not-Next"; else fail "AC-Plan-Dropped-Not-Next"; fi
+
+echo "=== AC-Plan-Waiting-Section (대기 [~] 는 별도 섹션 + 기한 경과 경고) ==="
+make_plan_task plan-waiting '# Plan
+
+## Checklist
+- [ ] 착수 가능한 일
+- [~] (until: 2026-08-18) 미래 이벤트 대기
+- [~] (until: 2001-01-01) 이미 지난 이벤트 대기
+'
+$CLI resume plan-waiting > $TMP/pw.out
+next_block=$(sed -n '/## ▶ 이제 할 차례/,/^$/p' $TMP/pw.out)
+ok=1
+grep -q '## ⏳ 대기중' $TMP/pw.out || ok=0
+printf '%s' "$next_block" | grep -q '대기' && ok=0                      # 할 일 섹션에 섞이면 안 됨
+grep -q '이미 지난 이벤트 대기.*⚠ 기한 지남' $TMP/pw.out || ok=0
+grep -q '미래 이벤트 대기 *$' $TMP/pw.out || ok=0                      # 미래분엔 경고 없음
+if [ "$ok" = 1 ]; then pass "AC-Plan-Waiting-Section"; else fail "AC-Plan-Waiting-Section"; fi
+
+echo "=== AC-Plan-Stale-Warning (plan.md가 journal보다 낡으면 brief 최상단 경고) ==="
+make_plan_task plan-stale '# Plan
+
+## Checklist
+- [ ] 실은 폐기된 할 일
+'
+printf -- '# 2026-08-13\n- 실은 폐기된 할 일은 이번엔 하지 않기로 함.\n' \
+  > "$PLAN_LAKE/inprogress/plan-stale/journal/2026-08-13.md"
+touch -t 202608110900 "$PLAN_LAKE/inprogress/plan-stale/plan.md"
+$CLI resume plan-stale > $TMP/ps.out
+ok=1
+head -1 $TMP/ps.out | grep -q '⚠ plan.md가 저널보다 낡음' || ok=0
+head -1 $TMP/ps.out | grep -q 'plan 2026-08-11 < journal 2026-08-13' || ok=0
+# 최신이면 경고가 없어야 한다 (false positive 금지)
+touch "$PLAN_LAKE/inprogress/plan-stale/plan.md"
+$CLI resume plan-stale | grep -q '저널보다 낡음' && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Plan-Stale-Warning"; else fail "AC-Plan-Stale-Warning"; fi
+
+echo "=== AC-Plan-Check-Candidates (journal의 폐기 신호를 후보로 잡는다) ==="
+make_plan_task plan-check-t '# Plan
+
+## Checklist
+- [ ] 로컬 E2E 설문 문항 설계 + 폼 작성
+- [ ] 아무 근거 없는 할 일
+- [x] 겹침 재확인 완료
+'
+printf -- '# 2026-08-13\n- E2E는 이번 설문에 합치지 않음 (존재하지 않는 도구라 가상 선호만 나옴).\n' \
+  > "$PLAN_LAKE/inprogress/plan-check-t/journal/2026-08-13.md"
+printf -- '# Context\n- **Branch**: main\n\n## Blockers\n- 겹침 재확인 미완\n' \
+  > "$PLAN_LAKE/inprogress/plan-check-t/context.md"
+$CLI plan-check plan-check-t > $TMP/pc.out
+ok=1
+grep -q '로컬 E2E 설문 문항 설계' $TMP/pc.out || ok=0
+grep -q '폐기로 보임' $TMP/pc.out || ok=0
+grep -q '아무 근거 없는 할 일' $TMP/pc.out && ok=0        # 근거 없는 항목은 후보 아님
+grep -q '겹침 재확인 미완' $TMP/pc.out || ok=0            # Blockers 모순 후보
+if [ "$ok" = 1 ]; then pass "AC-Plan-Check-Candidates"; else fail "AC-Plan-Check-Candidates"; fi
+
+echo "=== AC-Plan-Legacy-Unchanged ([ ]/[x] 만 쓰는 태스크는 출력이 이전과 동일) ==="
+# 하위호환 핵심. 새 마커가 없고 stale도 아니면, 신규 코드가 출력에 손대지 않아야 한다.
+make_plan_task plan-legacy '# Plan
+
+## Checklist
+- [x] 옛 완료
+- [ ] 옛 할 일
+'
+touch "$PLAN_LAKE/inprogress/plan-legacy/plan.md"
+$CLI resume plan-legacy > $TMP/pl.out
+ok=1
+grep -q '저널보다 낡음' $TMP/pl.out && ok=0
+grep -q '⏳ 대기중' $TMP/pl.out && ok=0
+grep -q '폐기.*숨김' $TMP/pl.out && ok=0
+grep -q '옛 할 일' $TMP/pl.out || ok=0
+# 기존 골든 픽스처(신규 마커 없음)의 brief도 바이트 단위로 안 바뀌었는지 확인
+$CLI resume small-task-fixture > $TMP/pl-s1.out
+$CLI resume small-task-fixture --view=full > $TMP/pl-s2.out
+diff -q $TMP/pl-s2.out $GOLDEN/resume-full-small.txt > /dev/null || ok=0
+grep -qE '저널보다 낡음|⏳ 대기중' $TMP/pl-s1.out && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Plan-Legacy-Unchanged"; else fail "AC-Plan-Legacy-Unchanged"; fi
+
 echo ""
 echo "================================"
 echo "Results: $PASS passed, $FAIL failed"

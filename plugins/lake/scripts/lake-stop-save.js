@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const spool = require('./lake-spool');
+const plan = require('./lake-plan');
 
 const LAKE_DIR = path.join(process.env.HOME, '.claude', 'prd-lake');
 const INPROGRESS = path.join(LAKE_DIR, 'inprogress');
@@ -60,6 +61,35 @@ function updateTimestamp(sessionId) {
   }
 }
 
+// 자동 기록 경로(spool→compactor)는 journal/context만 갱신하고 plan.md는 방치한다.
+// 그래서 저장은 되는데 "다음 할 일"만 낡는 사고가 난다. 여기서 최소한 경고는 남긴다.
+// 매 턴 도는 훅이므로 태스크·날짜당 1회만 알린다 (스팸이면 아무도 안 읽는다).
+function planStaleWarning(sessionId) {
+  const marker = readActiveMarker(sessionId);
+  if (!marker) return null;
+
+  const dir = path.join(INPROGRESS, marker.slug);
+  const stale = plan.planStaleInfo(dir);
+  if (!stale) return null;
+
+  try {
+    const stampPath = path.join(LAKE_DIR, '.plan-stale-warned');
+    const key = `${marker.slug}:${stale.journalDate}`;
+    const seen = fs.existsSync(stampPath)
+      ? fs.readFileSync(stampPath, 'utf-8').split('\n').map(s => s.trim()).filter(Boolean)
+      : [];
+    if (seen.includes(key)) return null;
+    // 최근 20개만 유지 — 무한히 자라면 안 된다
+    fs.writeFileSync(stampPath, seen.concat(key).slice(-20).join('\n') + '\n', 'utf-8');
+  } catch {
+    // 중복 억제 실패는 경고를 막을 이유가 못 된다
+  }
+
+  return `[PRD Lake] ⚠ ${marker.slug}의 plan.md가 저널보다 낡음 ` +
+    `(plan ${stale.planDate} < journal ${stale.journalDate}). ` +
+    '`/lake save` 시 plan-check로 할 일 목록을 맞출 것.';
+}
+
 async function main() {
   const payload = await spool.readStdinJson();
   try {
@@ -67,8 +97,18 @@ async function main() {
   } catch {
     // 조용히 실패
   }
+
+  let warning = null;
+  try {
+    warning = planStaleWarning(payload.session_id);
+  } catch {
+    // 경고 실패해도 stop을 막지 않는다
+  }
+
   // Stop hook은 절대 세션 종료를 차단하지 않는다
-  process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }));
+  const result = { continue: true, suppressOutput: true };
+  if (warning) result.systemMessage = warning;
+  process.stdout.write(JSON.stringify(result));
 }
 
 main().catch(() => process.stdout.write(JSON.stringify({ continue: true })));

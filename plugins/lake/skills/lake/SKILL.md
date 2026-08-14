@@ -26,46 +26,28 @@ Save work progress to `~/.claude/prd-lake/` per task, so you can instantly resto
       spec.md                    ← What (requirements/background)
       plan.md                    ← How (checklist)
       context.md                 ← Branch/files/decisions
-      journal/                   ← Daily work log
-        {yyyy-MM-dd}.md
-      artifacts/                 ← 산출물 인덱스
-        INDEX.md                 ← 산출물 목록 + 실제 경로
-  done/                          ← Completed tasks
-    {task-name}/...
-  archive/                       ← Auto-cleaned after 30 days
-    {yyyy-MM}/...
+      journal/{yyyy-MM-dd}.md    ← Daily work log
+      artifacts/INDEX.md         ← 산출물 목록 + 실제 경로
+  done/{task-name}/...           ← Completed tasks
+  archive/{yyyy-MM}/...          ← Auto-cleaned after 30 days
 ```
 
 ### index.json format
 
 ```json
-[
-  {
-    "id": "ce119e",
-    "slug": "내집마련-로드맵",
-    "title": "내집마련 로드맵",
-    "project": "my-dashboard",
-    "status": "inprogress",
-    "created": "2026-04-10",
-    "updated": "2026-04-10"
-  }
-]
+[{ "id": "ce119e", "slug": "내집마련-로드맵", "title": "내집마련 로드맵",
+   "project": "my-dashboard", "status": "inprogress",
+   "created": "2026-04-10", "updated": "2026-04-10" }]
 ```
 
 Optional fields: `parent` (parent epic id), `children` (child task ids), `relates` (bidirectionally linked task ids), `tags` (tag strings without `#`), `blocked_by` (blocker task ids), `blocks` (task ids this task blocks). `id` is a 6-char SHA1 hash of the slug. Users can reference tasks by hash prefix (e.g. `ce11`).
 
 ### project registry — `projects.json` (optional, per-install)
 
-`~/.claude/prd-lake/projects.json` defines each install's canonical project names + aliases, so free-text `project` values group cleanly under `list --project`, and `upsert` normalizes them on save. **Missing/invalid file → no enforcement (fully backward compatible).** See `scripts/projects.example.json`.
-
-```json
-{
-  "projects": ["nestads", "heypoll", "infra"],
-  "aliases": { "nestads-deliverer": "nestads", "heypoll-backend": "heypoll" }
-}
-```
-
-Normalization: exact `aliases` match → canonical; exact `projects` match → itself; else strips a trailing parenthetical (`"nestads (pilot)"` → `nestads`) and retries; unknown values pass through unchanged (never destroys data).
+`~/.claude/prd-lake/projects.json`이 프로젝트 정식명 + alias를 정의하면 자유 입력된 `project`
+값이 `list --project` 아래로 깔끔히 묶이고 `upsert`가 저장 시 정규화한다. **파일이 없거나
+깨져도 강제 없음(완전 하위호환).** 형식·정규화 규칙 → `references/advanced.md`,
+`scripts/projects.example.json`.
 
 ### lake-cli.js
 
@@ -95,6 +77,7 @@ node ~/.claude/prd-lake/lake-cli.js <command> [args]
 | `untag <task> <tag1> [tag2...]` | Remove tags from a task |
 | `block <blocked> <blocker>` | Mark task as blocked by another |
 | `unblock <blocked> <blocker>` | Remove blocked-by link |
+| `plan-check <hash-or-slug>` | plan.md stale 여부 + journal/Blockers 불일치 후보 (save 4단계 필수) |
 
 ## Commands
 
@@ -105,11 +88,19 @@ Create or update a task folder and save spec/plan/context.
 1. Generate slug; auto-extract Project (git root) and Branch
 2. Check if folder exists → update (confirm) or create new
 3. AI drafts spec.md / plan.md / context.md from current session
-4. **Reconcile plan.md (필수)**: 세션에서 완료·처리 확인된 항목을 `- [ ]`→`- [x]`로, 무효 항목은 수정/제거. resume brief의 "여기까지/이제 할 차례"는 **plan.md 체크박스에서만** 추출된다 — journal/context만 갱신하고 이걸 빼먹으면 다음 resume이 낡은 할 일을 보여준다.
+4. **Reconcile plan.md — 반드시 커맨드로 한다** (기억에 의존한 판단 금지):
+   `node ~/.claude/prd-lake/lake-cli.js plan-check <hash>` 를 실행하고, 출력된 **후보마다**
+   `체크 [x] / 대기 [~] / 폐기 [-] / 유지 [ ]` 중 하나를 판정해 plan.md에 반영한다.
+   `[~]`엔 `(until: YYYY-MM-DD)`, `[-]`엔 `(폐기 YYYY-MM-DD) 사유`를 붙인다.
+   폐기 항목은 **삭제하지 않는다**. 배경·어휘 상세 → `references/advanced.md`
 5. AskUserQuestion: "Saving with this content. Anything to change?"
+   — **plan 상태 변경 diff 필수 포함** (무엇을 `[x]`/`[~]`/`[-]`로 바꿨는지 항목별로).
 6. Write files; run `lake-cli.js upsert` to update index.json
 7. Append to `journal/{today}.md`
 8. AskUserQuestion: "Any artifacts to record? (path or skip)"
+
+> **"다음 할 일"의 단일 정본은 `plan.md`다.** context.md의 `<!-- lake:auto-context -->`는
+> compactor가 쓰는 **최근 활동 로그**이지 할 일 목록이 아니다. 둘이 다르면 plan.md가 이긴다.
 
 Templates → see `references/templates.md`. `--parent` flag → see `references/epic-graph.md`.
 
@@ -118,21 +109,25 @@ Templates → see `references/templates.md`. `--parent` flag → see `references
 **Bash 1회로 끝낸다. 기본 `--view=compressed`(빠름 — 1줄/태스크).**
 
 1. Run: `node ~/.claude/prd-lake/lake-cli.js list --view=compressed`
-   - **사용자가 프로젝트를 지목하면(예: "list nestads", "nestads 것만 보여줘") 반드시 그 값을 cli 인자로 넘긴다: `list nestads --view=compressed`.** 전체 목록을 받아 **손으로 필터하지 말 것** — 느리고 부정확하다(수동 필터는 stale·truncate 때문에 일부만 집는다). cli 필터는 projects.json으로 정규화 + truncation 없이 그 프로젝트 전부를 보여준다.
+   - **사용자가 프로젝트를 지목하면 반드시 cli 인자로 넘긴다**: `list nestads --view=compressed`.
+     전체를 받아 **손으로 필터하지 말 것** — stale·truncate 때문에 일부만 집는다. cli 필터는
+     projects.json으로 정규화 + truncation 없이 전부 보여준다 (없으면 정확 일치).
 2. Echo captured stdout verbatim inside a fenced code block in your text reply. No Read, no Glob.
 3. 전체 트리는 `--view=tree`, 오래된 항목까지 모두 보려면 `--view=all`.
-4. **프로젝트 필터 상세**: `list <name>` 또는 `list --project <name>`. 값은 projects.json으로 정규화되어 묶인다 (예: `list nestads` → nestads/nestads-deliverer/nestads-backend 전부, stale 포함 전부). projects.json 없으면 정확 일치로만 필터.
 
 ### `/lake resume [name-or-hash]`
 
-**Bash 1회로 끝낸다. 기본 `--view=brief`(브리핑 — Goal / 여기까지 / 이제 할 차례 / Blockers / Context).**
+**Bash 1회로 끝낸다. 기본 `--view=brief`(Goal / 여기까지 / 이제 할 차례 / 대기중 / Blockers / Context).**
 
 1. No arg: run `list --view=compressed`, AskUserQuestion to select
 2. With arg: `lake-cli.js resume <arg>` → Echo captured stdout verbatim inside a fenced code block. Brief이 기본이라 view 플래그 없이 호출.
 3. Brief은 "AI도 바로 작업 진행 가능하게" 설계됐다. 사용자가 그 task의 작업을 이어서 요청하면(구현/디버그/수정/이어서 등) brief의 컨텍스트로 곧바로 시작한다 — full을 미리 호출하지 말 것.
-4. 작업 중 journal/history 정보가 *명시적으로* 필요할 때만(예: "지난주에 왜 X 결정했지?", "이전 시도 어떻게 됐어?") `--view=full` 호출.
-5. 사용자가 명시적으로 다른 view를 요청하면(`summary`, `recap`, `minimal`, `files`) 그 플래그로 호출.
-6. Update spec.md Updated timestamp + `lake-cli.js upsert`
+4. **brief 최상단에 `⚠ plan.md가 저널보다 낡음`이 뜨면 할 일 목록을 그대로 보고하지 말 것.**
+   `plan-check <hash>`를 먼저 돌려 후보를 판정한 뒤 이어간다. `⏳ 대기중`은 착수 가능한
+   일이 아니고, 폐기(`[-]`)는 brief에서 숨겨진다(`--view=full`에서 확인).
+5. 작업 중 journal/history 정보가 *명시적으로* 필요할 때만 `--view=full` 호출.
+6. 사용자가 명시적으로 다른 view를 요청하면(`summary`, `recap`, `minimal`, `files`) 그 플래그로 호출.
+7. Update spec.md Updated timestamp + `lake-cli.js upsert`
 
 ### `/lake done [name-or-hash]`
 

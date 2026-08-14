@@ -29,12 +29,18 @@ description: spec/plan/context/journal/artifacts 템플릿
 # Plan
 
 ## Checklist
-- [x] Completed item
-- [ ] Pending item
+- [x] 완료된 항목
+- [ ] 지금 착수 가능한 항목
+- [~] (until: 2026-08-18) 외부 이벤트 대기 — 해제조건을 괄호로
+- [-] (폐기 2026-08-13) 폐기된 항목 — 사유. 삭제하지 말 것
 
 ## Notes
 {Implementation notes}
 ```
+
+체크박스 4종의 의미와 `plan-check` 절차 → `references/advanced.md`.
+`[~]`는 brief의 "⏳ 대기중"으로, `[-]`는 brief에서 숨겨진다. **폐기 항목을 지우면
+같은 논의가 재발하므로 `[-]`로 남긴다.**
 
 ## context.md template
 

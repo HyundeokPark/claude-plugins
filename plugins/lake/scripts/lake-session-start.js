@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const spool = require('./lake-spool');
+const plan = require('./lake-plan');
 
 const LAKE_DIR = path.join(process.env.HOME, '.claude', 'prd-lake');
 const INPROGRESS = path.join(LAKE_DIR, 'inprogress');
@@ -137,6 +138,13 @@ function buildBriefing(cwd) {
       lines.push(`- [${t.id}] ${t.title} (${t.project || '-'}, updated ${t.updated})`);
       const auto = readAutoContext(t.slug);
       if (auto) lines.push('  ' + auto.replace(/\n/g, '\n  '));
+      // 자동 기록(journal/context)은 훅이 갱신하지만 plan.md는 사람·AI 재량이라
+      // 혼자 썩는다. 낡은 채로 브리핑하면 다음 세션이 죽은 할 일을 보고한다.
+      const stale = plan.planStaleInfo(path.join(INPROGRESS, t.slug));
+      if (stale) {
+        lines.push(`  ⚠ plan.md가 저널보다 낡음 (plan ${stale.planDate} < journal ${stale.journalDate})` +
+          ` — 할 일 목록을 그대로 믿지 말고 \`lake-cli.js plan-check ${t.id}\` 를 먼저 실행하라.`);
+      }
     }
 
     return `[PRD Lake 자동 브리핑] 최근 진행 중 태스크와 마지막 상태:\n${lines.join('\n')}\n` +
@@ -154,6 +162,18 @@ function ensureLakeSetup() {
   const cliSrc = path.join(__dirname, 'lake-cli.js');
   const cliDst = path.join(LAKE_DIR, 'lake-cli.js');
   fs.mkdirSync(LAKE_DIR, { recursive: true });
+
+  // lake-cli.js가 require하는 모듈을 **먼저** 배포한다. 순서가 뒤집히면
+  // 새 cli는 배포됐는데 의존 모듈이 없는 순간이 생겨 lake 전체가 죽는다.
+  for (const dep of ['lake-plan.js']) {
+    const depSrc = path.join(__dirname, dep);
+    if (!fs.existsSync(depSrc)) continue;
+    const depDst = path.join(LAKE_DIR, dep);
+    const depTmp = depDst + '.tmp.' + process.pid;
+    fs.copyFileSync(depSrc, depTmp);
+    fs.renameSync(depTmp, depDst);
+  }
+
   // 항상 최신 버전으로 덮어쓰기
   if (fs.existsSync(cliSrc)) {
     const tmp = cliDst + '.tmp.' + process.pid;

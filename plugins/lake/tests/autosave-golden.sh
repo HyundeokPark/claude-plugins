@@ -198,6 +198,37 @@ sleep 2
 # 복원된 .jsonl은 곧바로 고아 복구가 compact할 수 있으므로 .processing 부재만 확인
 if [ ! -f "$SPOOL/stuck.jsonl.processing" ]; then pass "AC-SessionStart-Stale-Processing-Recovery"; else fail "AC-SessionStart-Stale-Processing-Recovery"; fi
 
+echo "=== AC-Plan-Stale-Briefing (SessionStart 브리핑에 plan stale 경고 주입) ==="
+# 자동 기록(journal/context)은 훅이 갱신하는데 plan.md만 방치되면 다음 세션이
+# 죽은 할 일을 보고한다 — 브리핑 단계에서 미리 알려야 한다.
+make_task stale-plan
+printf -- '# Plan\n\n## Checklist\n- [ ] 실은 폐기된 일\n' > "$LAKE/inprogress/stale-plan/plan.md"
+printf -- '# 2026-08-13\n- 그 일은 하지 않기로 함.\n' > "$LAKE/inprogress/stale-plan/journal/2026-08-13.md"
+touch -t 202608110900 "$LAKE/inprogress/stale-plan/plan.md"
+printf '[{"id":"stale1","slug":"stale-plan","title":"Stale Plan","project":"t","status":"inprogress","created":"2026-08-01","updated":"2026-08-13"}]\n' > "$LAKE/index.json"
+sp_out=$(printf '{"session_id":"stale-brief","cwd":"/tmp"}' | HOME="$FAKE_HOME" node "$S/lake-session-start.js" 2>/dev/null)
+ok=1
+echo "$sp_out" | grep -q 'plan.md가 저널보다 낡음' || ok=0
+echo "$sp_out" | grep -q 'plan-check' || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Plan-Stale-Briefing"; else fail "AC-Plan-Stale-Briefing"; fi
+
+echo "=== AC-Plan-Stale-Stop-Warning (Stop 훅이 stale 경고 1회만 낸다) ==="
+set_marker stop-sess stale-plan
+w1=$(printf '{"session_id":"stop-sess"}' | HOME="$FAKE_HOME" node "$S/lake-stop-save.js" 2>/dev/null)
+w2=$(printf '{"session_id":"stop-sess"}' | HOME="$FAKE_HOME" node "$S/lake-stop-save.js" 2>/dev/null)
+ok=1
+echo "$w1" | grep -q 'plan.md가 저널보다 낡음' || ok=0
+echo "$w2" | grep -q 'plan.md가 저널보다 낡음' && ok=0   # 매 턴 반복되면 아무도 안 읽는다
+echo "$w2" | grep -q '"continue":true' || ok=0           # 경고 억제와 무관하게 stop은 통과
+if [ "$ok" = 1 ]; then pass "AC-Plan-Stale-Stop-Warning"; else fail "AC-Plan-Stale-Stop-Warning"; fi
+
+echo "=== AC-Plan-Dep-Deployed (lake-cli 의존 모듈이 prd-lake로 함께 배포된다) ==="
+# lake-cli.js는 ~/.claude/prd-lake/로 단독 배포된다. require 대상이 같이 안 가면 lake가 죽는다.
+ok=1
+[ -f "$LAKE/lake-plan.js" ] || ok=0
+HOME="$FAKE_HOME" node "$LAKE/lake-cli.js" plan-check stale-plan > /dev/null 2>&1 || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Plan-Dep-Deployed"; else fail "AC-Plan-Dep-Deployed"; fi
+
 echo
 echo "================================"
 echo "Results: $PASS passed, $FAIL failed"

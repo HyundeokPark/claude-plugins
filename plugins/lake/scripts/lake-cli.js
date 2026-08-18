@@ -675,8 +675,16 @@ function extractSpecGoal(specText) {
     return '## Goal\n' + goalMatch[2].trim() + '\n';
   }
   // Fallback: 제목/메타 + 앞부분. 사람이 읽을 분량으로만 자른다.
-  const lines = specText.split('\n');
-  return lines.slice(0, 10).join('\n') + '\n';
+  // 📍 요약은 브리프 맨 위에서 이미 보여준다. 원문을 그대로 자르면 그 섹션과
+  // `<!-- lake:auto-recap -->` 마커까지 딸려 들어와 같은 문장이 두 번 나온다.
+  const lines = recaplib.stripRecapFromSpec(specText).split('\n');
+  const head = lines.slice(0, 10);
+  // 10줄에서 기계적으로 끊으므로 끝에 내용 없는 헤딩만 남거나(`## 배경`),
+  // 섹션을 걷어낸 자리에 빈 줄이 겹쳐 남는다. 화면에 나가기 전에 정리한다.
+  while (head.length && (head[head.length - 1].trim() === '' || /^#{1,6}\s/.test(head[head.length - 1]))) {
+    head.pop();
+  }
+  return head.join('\n').replace(/\n{3,}/g, '\n\n') + '\n';
 }
 
 function extractBlockersSection(contextText) {

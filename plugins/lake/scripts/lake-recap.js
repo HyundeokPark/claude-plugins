@@ -154,6 +154,18 @@ function extractFromSpec(specText) {
 }
 
 /**
+ * 📍 요약 섹션을 걷어낸 spec 본문. 요약은 브리프 맨 위에서 따로 보여주므로,
+ * spec을 앞에서부터 잘라 쓰는 쪽(Goal 폴백)이 같은 문장을 두 번 내보내지 않게 한다.
+ * 파싱 규칙을 한곳에 두려고 여기 둔다 — findRecapSection과 짝이다.
+ */
+function stripRecapFromSpec(specText) {
+  const text = String(specText || '');
+  const sec = findRecapSection(text);
+  if (!sec) return text;
+  return (text.slice(0, sec.start) + text.slice(sec.end)).replace(/^\n+/, '');
+}
+
+/**
  * spec.md의 `## 📍 사람용 요약` 섹션을 자동 생성분으로 갱신한다.
  *
  * @returns 'written' | 'created' | 'manual-kept' | 'no-spec'
@@ -194,6 +206,7 @@ module.exports = {
   AUTO_MARKER,
   findRecapSection,
   extractFromSpec,
+  stripRecapFromSpec,
   findTranscript,
   readAwaySummaries,
   pickForSegment,

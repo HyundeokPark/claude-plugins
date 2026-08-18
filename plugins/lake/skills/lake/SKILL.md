@@ -101,10 +101,11 @@ Create or update a task folder and save spec/plan/context.
 
 > **"다음 할 일"의 단일 정본은 `plan.md`다.** context.md의 `<!-- lake:auto-context -->`는
 > compactor가 쓰는 **최근 활동 로그**이지 할 일 목록이 아니다. 둘이 다르면 plan.md가 이긴다.
+> brief는 미체크 항목 중 **위 3개만** 집는다. 급한 게 아래 깔리면 `- [ ] ★1 ...` 처럼 **맨 앞에 `★N`**(작은 수 먼저)을 달아라.
 
-> **사람용 요약(`## 📍`)은 직접 쓰지 않아도 된다.** 세션 종료 시 compactor가 Claude Code의
-> away_summary를 수확해 spec.md 맨 위에 넣는다. `<!-- lake:auto-recap -->` 마커가 붙은 것만
-> 자동 갱신되니, 손으로 고치고 싶으면 마커를 지우면 그 뒤로 자동이 덮지 않는다.
+> **📍는 태스크 상태가 아니다 — 절대 "지금 할 일"로 읽지 마라.** compactor가 Claude Code의
+> away_summary(자리 비울 때의 *대화* 상태)를 수확한 것이라, 세션 끝이 도구 수리였으면 그
+> 얘기가 올라온다. 손으로 쓰려면 `<!-- lake:auto-recap -->` 마커를 지우면 자동이 안 덮는다.
 
 Templates → see `references/templates.md`. `--parent` flag → see `references/epic-graph.md`.
 
@@ -129,6 +130,7 @@ Templates → see `references/templates.md`. `--parent` flag → see `references
 4. **brief 최상단에 `⚠ plan.md가 저널보다 낡음`이 뜨면 할 일 목록을 그대로 보고하지 말 것.**
    `plan-check <hash>`를 먼저 돌려 후보를 판정한 뒤 이어간다. `⏳ 대기중`은 착수 가능한
    일이 아니고, 폐기(`[-]`)는 brief에서 숨겨진다(`--view=full`에서 확인).
+   **`… 외 N건`이 붙어 있으면 "이게 전부"라고 보고하지 말 것** — 감춰진 N건이 있다.
 5. 작업 중 journal/history 정보가 *명시적으로* 필요할 때만 `--view=full` 호출.
 6. 사용자가 명시적으로 다른 view를 요청하면(`summary`, `recap`, `minimal`, `files`) 그 플래그로 호출.
 7. Update spec.md Updated timestamp + `lake-cli.js upsert`

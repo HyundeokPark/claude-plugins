@@ -723,16 +723,42 @@ function extractLatestJournalHeadline(journalText) {
   return result.join('\n') + '\n';
 }
 
-function extractPlanUnresolvedTop(planText, n) {
+// 착수 가능(`- [ ]`) 항목을 모은다.
+//
+// 왜 파일 순서만으로는 부족한가: brief는 여기서 위 3개만 집는다. 그런데 plan.md는
+// 시간순으로 덧붙여 쓰는 문서라 "이번 주 최우선"이 6번째 줄에 깔리는 일이 생긴다.
+// 실제로 그렇게 잘려서 사람이 곁가지 3건을 '지금 할 일'로 읽는 사고가 났다.
+// 그래서 항목 맨 앞의 `★N` 마커를 우선순위로 인정한다 — `- [ ] ★1 ...` 이 1순위.
+// 마커가 없으면 종전대로 파일 순서. 기존 plan.md는 아무것도 안 바뀐다(하위호환).
+// 본문 중간의 ★("★이번주 최우선" 같은 수사)는 마커로 치지 않는다 — 맨 앞만 본다.
+function planUnresolvedLines(planText) {
   if (!planText) return [];
-  const unresolved = [];
+  const out = [];
   for (const line of planText.split('\n')) {
-    if (/^- \[ \]/.test(line.trim()) || /^\s*- \[ \]/.test(line)) {
-      unresolved.push(line);
-      if (unresolved.length >= n) break;
-    }
+    if (/^\s*- \[ \]/.test(line)) out.push(line);
   }
-  return unresolved;
+  return out;
+}
+
+function planPriorityRank(line) {
+  const m = line.match(/^\s*- \[ \]\s*★(\d*)/);
+  if (!m) return Number.POSITIVE_INFINITY;   // 마커 없음 → 파일 순서에 맡긴다
+  return m[1] ? parseInt(m[1], 10) : 0;      // 숫자 없는 ★ 는 최상위
+}
+
+function countPlanUnresolved(planText) {
+  return planUnresolvedLines(planText).length;
+}
+
+function extractPlanUnresolvedTop(planText, n) {
+  const all = planUnresolvedLines(planText);
+  // 같은 순위끼리는 파일 순서를 지켜야 하므로 index를 tiebreak으로 쓴다
+  // (Array.prototype.sort 의 안정성에 기대지 않는다).
+  return all
+    .map((line, i) => ({ line, i, rank: planPriorityRank(line) }))
+    .sort((a, b) => (a.rank - b.rank) || (a.i - b.i))
+    .slice(0, n)
+    .map(x => x.line);
 }
 
 function truncateLines(text, maxLines, maxChars, sectionLabel) {
@@ -951,7 +977,10 @@ function renderResumeMinimal(task, index, dir) {
   const planRaw = readFileSafe(path.join(dir, 'plan.md')) || '';
   const unresolved = extractPlanUnresolvedTop(planRaw, 3);
   if (unresolved.length > 0) {
+    // brief와 같은 이유로, 감춘 건수를 밝힌다 (조용한 절단 = "이게 전부"로 오독됨).
+    const restCount = countPlanUnresolved(planRaw) - unresolved.length;
     out += 'Next:\n' + unresolved.map(line => '  ' + truncate(line, 100)).join('\n') + '\n';
+    if (restCount > 0) out += `  … 외 ${restCount}건\n`;
   }
 
   out += '(recap · --view=summary or --view=full for more detail)\n';
@@ -988,9 +1017,14 @@ function renderResumeBrief(task, index, dir) {
   out += `=== ${task.title} [${task.id}] · ${task.status} · ${ago} ===\n\n`;
 
   // 사람용 요약이 있으면 Goal보다 위에 온다 — 사람이 제일 먼저 읽는 자리다.
+  //
+  // 단 이건 Claude Code의 away_summary를 주워온 것이라 "자리 비울 때 대화가 어디까지
+  // 갔나"를 말한다. 태스크의 다음 할 일이 아니다. 세션 끝이 잡담이나 도구 수리였으면
+  // 그 얘기가 그대로 올라온다. 라벨을 안 달았더니 AI가 이걸 '지금 할 일'로 읽고
+  // 엉뚱하게 보고하는 사고가 났다 — 정본이 아래 ▶ 임을 그 자리에서 못박는다.
   const humanRecap = extractSpecHumanRecap(specRaw);
   if (humanRecap) {
-    out += `## 📍 사람용 요약\n${humanRecap}\n\n`;
+    out += `## 📍 지난 세션 요약 (대화 기준 — 할 일 정본은 아래 ▶)\n${humanRecap}\n\n`;
   }
 
   const goal = extractSpecGoal(specRaw);
@@ -1017,7 +1051,12 @@ function renderResumeBrief(task, index, dir) {
   // "이제 할 차례"에는 `- [ ]`(착수 가능)만. `- [~]`(대기)·`- [-]`(폐기)는 여기 오면 안 된다.
   const unresolved = extractPlanUnresolvedTop(planRaw, 3);
   if (unresolved.length > 0) {
-    out += `## ▶ 이제 할 차례\n${unresolved.join('\n')}\n\n`;
+    // 잘린 걸 말하지 않으면 "이게 전부"로 읽힌다. 몇 건을 감췄는지 반드시 밝힌다.
+    const restCount = countPlanUnresolved(planRaw) - unresolved.length;
+    const more = restCount > 0
+      ? `\n… 외 ${restCount}건 — 전체는 \`lake-cli.js resume ${task.id} --view=full\``
+      : '';
+    out += `## ▶ 이제 할 차례\n${unresolved.join('\n')}${more}\n\n`;
   }
 
   // 대기 항목은 지금 착수할 수 없으므로 할 일과 섞지 않는다. 다만 숨기면 잊히므로

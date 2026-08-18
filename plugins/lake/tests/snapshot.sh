@@ -338,7 +338,8 @@ printf -- '# recap-render\n\n## 📍 사람용 요약\n<!-- lake:auto-recap -->\
 $CLI resume recap-render > $TMP/rr.out
 $CLI resume recap-render --view=recap > $TMP/rr2.out
 ok=1
-grep -q '## 📍 사람용 요약' $TMP/rr.out || ok=0
+grep -q '## 📍 지난 세션 요약' $TMP/rr.out || ok=0
+grep -q '할 일 정본은 아래' $TMP/rr.out || ok=0                     # 태스크 상태로 오독 방지 라벨
 grep -q '뭘 하던 중이고 여기까지 됐습니다' $TMP/rr.out || ok=0
 grep -q 'lake:auto-recap' $TMP/rr.out && ok=0                      # 기계용 마커 노출 금지
 # 📍가 📌보다 위 (사람이 제일 먼저 읽는 자리)
@@ -363,6 +364,53 @@ grep -q '진짜 요약 한 문단' $TMP/rb.out || ok=0
 grep -q '삼켜지면 안 되는 메타' $TMP/rb.out && ok=0
 grep -q '목표 한 줄' $TMP/rb.out || ok=0            # Goal은 정상 추출
 if [ "$ok" = 1 ]; then pass "AC-Recap-Section-Bounded"; else fail "AC-Recap-Section-Bounded"; fi
+
+echo "=== AC-Plan-Priority-Star (★N 마커가 파일 순서를 이긴다) ==="
+# 실사고: plan.md는 시간순으로 덧붙는 문서라 "이번 주 최우선"이 6번째 줄에 깔렸고,
+# brief가 위 3개만 집는 바람에 곁가지가 '지금 할 일'로 보고됐다.
+make_plan_task prio-star '# Plan
+
+## 남은 일
+- [ ] 곁가지 하나
+- [ ] 곁가지 둘
+- [ ] 곁가지 셋
+- [ ] ★2 두번째로 급한 것
+- [ ] ★1 제일 급한 것
+'
+$CLI resume prio-star > $TMP/ps.out
+ok=1
+grep -q '제일 급한 것' $TMP/ps.out || ok=0
+grep -q '두번째로 급한 것' $TMP/ps.out || ok=0
+# ★1 이 ★2 보다 위, ★2 가 곁가지보다 위
+[ "$(grep -n '제일 급한 것' $TMP/ps.out | head -1 | cut -d: -f1)" -lt "$(grep -n '두번째로 급한 것' $TMP/ps.out | head -1 | cut -d: -f1)" ] || ok=0
+[ "$(grep -n '두번째로 급한 것' $TMP/ps.out | head -1 | cut -d: -f1)" -lt "$(grep -n '곁가지 하나' $TMP/ps.out | head -1 | cut -d: -f1)" ] || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Plan-Priority-Star"; else fail "AC-Plan-Priority-Star"; fi
+
+echo "=== AC-Plan-No-Silent-Truncation (3개로 자를 때 감춘 건수를 밝힌다) ==="
+make_plan_task no-silent '# Plan
+
+## 남은 일
+- [ ] 하나
+- [ ] 둘
+- [ ] 셋
+- [ ] 넷
+- [ ] 다섯
+'
+$CLI resume no-silent > $TMP/ns.out
+$CLI resume no-silent --view=recap > $TMP/ns2.out
+ok=1
+grep -q '외 2건' $TMP/ns.out || ok=0
+grep -q '외 2건' $TMP/ns2.out || ok=0
+# 3건 이하면 군더더기를 붙이지 않는다
+make_plan_task no-silent2 '# Plan
+
+## 남은 일
+- [ ] 하나
+- [ ] 둘
+'
+$CLI resume no-silent2 > $TMP/ns3.out
+grep -q '외 .*건' $TMP/ns3.out && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Plan-No-Silent-Truncation"; else fail "AC-Plan-No-Silent-Truncation"; fi
 
 echo "=== AC-Goal-Korean-Heading (## 목표 인식 — 앞부분 통째 덤프 방지) ==="
 # `## Goal`만 찾던 탓에 한글 spec은 폴백으로 앞 22줄이 쏟아졌다 ("정보 과다"의 직접 원인).

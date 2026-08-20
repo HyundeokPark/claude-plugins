@@ -23,6 +23,10 @@ const path = require('path');
 const PROJECTS_DIR = path.join(process.env.HOME, '.claude', 'projects');
 const RECAP_HEADING = '## 📍 사람용 요약';
 const AUTO_MARKER = '<!-- lake:auto-recap -->';
+// 출처까지 적는 마커. away_summary(대화 전체를 본 것)가 haiku(도구 로그만 본 것)보다
+// 항상 낫다. 중간 플러시가 잦아지면서, 좋은 요약을 나중 haiku 요약이 덮는 사고가
+// 생길 수 있다 — 출처를 남겨야 그걸 막을 수 있다.
+const AUTO_MARKER_RE = /<!--\s*lake:auto-recap(?:\s+source=(\w+))?\s*-->/;
 
 // Claude Code가 요약 끝에 붙이는 UI 안내문 — lake에 남길 내용이 아니다.
 const UI_HINT_RE = /\s*\(disable recaps in \/config\)\s*$/;
@@ -170,7 +174,7 @@ function stripRecapFromSpec(specText) {
  *
  * @returns 'written' | 'created' | 'manual-kept' | 'no-spec'
  */
-function writeRecap(taskDir, text, dateStr) {
+function writeRecap(taskDir, text, dateStr, source) {
   const specPath = path.join(taskDir, 'spec.md');
   let body;
   try {
@@ -182,12 +186,19 @@ function writeRecap(taskDir, text, dateStr) {
   const clean = String(text || '').replace(UI_HINT_RE, '').replace(/\s*\n\s*/g, ' ').trim();
   if (!clean) return 'manual-kept';
 
-  const section = `${RECAP_HEADING}\n${AUTO_MARKER}\n(${dateStr}) ${clean}\n`;
+  const src = source === 'away_summary' ? 'away_summary' : 'haiku';
+  const marker = `<!-- lake:auto-recap source=${src} -->`;
+  const section = `${RECAP_HEADING}\n${marker}\n(${dateStr}) ${clean}\n`;
   const sec = findRecapSection(body);
 
   if (sec) {
     // 사람이 쓴 요약은 건드리지 않는다 — 자동 마커가 있을 때만 덮는다.
-    if (body.slice(sec.start, sec.end).indexOf(AUTO_MARKER) === -1) return 'manual-kept';
+    const existing = body.slice(sec.start, sec.end);
+    const m = existing.match(AUTO_MARKER_RE);
+    if (!m) return 'manual-kept';
+    // 출처 강등 금지: 이미 away_summary가 있는데 haiku로 덮지 않는다.
+    // (출처 표기가 없는 옛 마커는 haiku로 간주 — 덮여도 손해가 아니다)
+    if (m[1] === 'away_summary' && src !== 'away_summary') return 'kept-better';
     fs.writeFileSync(specPath, body.slice(0, sec.start) + section + body.slice(sec.end), 'utf-8');
     return 'written';
   }
@@ -204,6 +215,7 @@ function writeRecap(taskDir, text, dateStr) {
 module.exports = {
   RECAP_HEADING,
   AUTO_MARKER,
+  AUTO_MARKER_RE,
   findRecapSection,
   extractFromSpec,
   stripRecapFromSpec,

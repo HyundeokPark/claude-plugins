@@ -106,23 +106,43 @@ function autoLine(text, label) {
   return m ? m[1].trim() : '';
 }
 
+/** 자동 구간 헤딩(`## 자동 상태 (compactor, 2026-08-21)`)에 박힌 날짜. 없으면 null. */
+function autoDate(text) {
+  const s = String(text || '');
+  const start = s.indexOf(AUTO_START);
+  if (start < 0) return null;
+  const head = s.slice(start, start + 200).split('\n').find(l => /^\s*##\s/.test(l));
+  return head ? headingDate(head) : null;
+}
+
 /**
- * 지금 상태. 수동 섹션이 있으면 그쪽이 정본이다 — 사람이 대화 전체를 보고 쓴 것이고,
- * 자동 요약은 도구 호출 로그만 보고 만든 것이다.
+ * 지금 상태.
+ *
+ * 기본은 수동 섹션이 이긴다 — 사람이 대화 전체를 보고 쓴 것이고, 자동 요약은
+ * 도구 호출 로그만 보고 만든 것이다.
+ *
+ * 단 **날짜가 둘 다 있고 자동 쪽이 더 새것이면 자동을 쓴다.** 중간 플러시가 붙으면서
+ * 자동 요약이 수시로 갱신되는데, 몇 주 전 `## 지금 상태 (2026-07-01)` 이 오늘 자동
+ * 요약을 계속 이기면 "손으로 쓸수록 낡은 걸 본다"는 원래 병이 방향만 바꿔 재발한다.
+ * 날짜가 없는 수동 섹션은 종전대로 이긴다 (사람이 최근에 손댔다고 보는 게 안전하다).
+ *
  * @returns {{text, source:'manual'|'auto', date:string|null}|null}
  */
 function currentState(text) {
   const manual = findSection(stripAuto(text), STATE_HEADINGS);
-  if (manual && manual.body) {
-    return { text: manual.body, source: 'manual', date: manual.date };
-  }
+  const aDate = autoDate(text);
   const now = autoLine(text, '현재');
   const next = autoLine(text, '다음');
-  const lines = [];
-  if (now) lines.push('현재: ' + now);
-  if (next) lines.push('다음: ' + next);
-  if (!lines.length) return null;
-  return { text: lines.join('\n'), source: 'auto', date: null };
+  const autoLines = [];
+  if (now) autoLines.push('현재: ' + now);
+  if (next) autoLines.push('다음: ' + next);
+  const auto = autoLines.length ? { text: autoLines.join('\n'), source: 'auto', date: aDate } : null;
+
+  if (manual && manual.body) {
+    const manualLoses = auto && manual.date && aDate && aDate > manual.date;
+    if (!manualLoses) return { text: manual.body, source: 'manual', date: manual.date };
+  }
+  return auto;
 }
 
 /**
@@ -144,5 +164,5 @@ function blockers(text) {
 module.exports = {
   AUTO_START, AUTO_END, STATE_HEADINGS, BLOCKER_HEADINGS,
   isNone, normalizeHeading, headingDate, findSection,
-  autoBody, stripAuto, autoLine, currentState, blockers,
+  autoBody, stripAuto, autoLine, autoDate, currentState, blockers,
 };

@@ -206,7 +206,7 @@ function relDate(ymd) {
 
 // --- Version & Flag Contract ---
 
-const LAKE_CLI_VERSION = '1.6.0';
+const LAKE_CLI_VERSION = '1.7.0';
 
 const VIEW_DEFAULTS = {
   resume: 'brief', // briefing-style digest (Goal/Done/Next/Blockers/Context, no journal) — AI can act directly from this

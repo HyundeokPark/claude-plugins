@@ -499,6 +499,58 @@ grep -q '사람이 확정한 최신 사실' $TMP/cmw.out || ok=0
 grep -q '낡은 자동 요약' $TMP/cmw.out && ok=0
 if [ "$ok" = 1 ]; then pass "AC-Context-Manual-Beats-Auto"; else fail "AC-Context-Manual-Beats-Auto"; fi
 
+echo '=== AC-Context-Fresh-Auto-Beats-Old-Manual (날짜 있으면 최신이 이긴다) ==='
+# 수동이 무조건 이기는 규칙은, 중간 플러시로 자동 요약이 수시로 갱신되면
+# "몇 주 전 수동 섹션이 오늘 자동 요약을 이긴다"로 병이 방향만 바꿔 재발한다.
+make_plan_task ctx-fresh-auto '# Plan
+
+## Checklist
+- [ ] 할 일
+'
+printf -- '# Context\n\n## 지금 상태 (2026-07-01)\n아주 낡은 수동 메모.\n\n<!-- lake:auto-context:start -->\n## 자동 상태 (compactor, 2026-08-21)\n현재: 오늘 만든 자동 요약.\n다음: 오늘 정한 다음 할 일.\n<!-- lake:auto-context:end -->\n' \
+  > "$PLAN_LAKE/inprogress/ctx-fresh-auto/context.md"
+$CLI resume ctx-fresh-auto > $TMP/cfa.out
+ok=1
+grep -q '오늘 만든 자동 요약' $TMP/cfa.out || ok=0
+grep -q '아주 낡은 수동 메모' $TMP/cfa.out && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Context-Fresh-Auto-Beats-Old-Manual"; else fail "AC-Context-Fresh-Auto-Beats-Old-Manual"; fi
+
+echo '=== AC-Context-Undated-Manual-Still-Wins (날짜 없는 수동은 종전대로 이긴다) ==='
+make_plan_task ctx-undated '# Plan
+
+## Checklist
+- [ ] 할 일
+'
+printf -- '# Context\n\n## 지금 상태\n날짜 없는 수동 메모.\n\n<!-- lake:auto-context:start -->\n## 자동 상태 (compactor, 2026-08-21)\n현재: 자동 요약.\n<!-- lake:auto-context:end -->\n' \
+  > "$PLAN_LAKE/inprogress/ctx-undated/context.md"
+$CLI resume ctx-undated > $TMP/cud.out
+ok=1
+grep -q '날짜 없는 수동 메모' $TMP/cud.out || ok=0
+grep -q '현재: 자동 요약' $TMP/cud.out && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Context-Undated-Manual-Still-Wins"; else fail "AC-Context-Undated-Manual-Still-Wins"; fi
+
+echo '=== AC-Recap-No-Downgrade (away_summary 리캡을 haiku가 덮지 않는다) ==='
+ok=1
+RD=$(node -e "
+const fs=require('fs'),os=require('os'),path=require('path');
+const r=require('$PLUGIN_DIR/scripts/lake-recap.js');
+const d=fs.mkdtempSync(path.join(os.tmpdir(),'lake-rd-'));
+fs.writeFileSync(path.join(d,'spec.md'), '# t\n\n- **Updated**: 2026-08-01\n');
+const a=r.writeRecap(d,'진짜 대화 기반 요약입니다.','2026-08-20','away_summary');
+const b=r.writeRecap(d,'도구 로그로 만든 요약입니다.','2026-08-21','haiku');
+const body=fs.readFileSync(path.join(d,'spec.md'),'utf-8');
+const c=r.writeRecap(d,'새 대화 기반 요약입니다.','2026-08-21','away_summary');
+const body2=fs.readFileSync(path.join(d,'spec.md'),'utf-8');
+console.log([a,b,c,
+  body.includes('진짜 대화 기반')?'kept':'LOST',
+  body.includes('도구 로그로')?'OVERWRITTEN':'blocked',
+  body2.includes('새 대화 기반')?'upgraded':'STUCK'].join('|'));
+fs.rmSync(d,{recursive:true,force:true});
+")
+echo "  → $RD"
+[ "$RD" = "created|kept-better|written|kept|blocked|upgraded" ] || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Recap-No-Downgrade"; else fail "AC-Recap-No-Downgrade"; fi
+
 echo ""
 echo "================================"
 echo "Results: $PASS passed, $FAIL failed"

@@ -187,7 +187,10 @@ function updateContext(taskDir, context, lastEventTs) {
       return;
     }
   } catch { /* stat 실패 시 그냥 진행 */ }
-  const section = `${AUTO_START}\n## 자동 상태 (compactor)\n${context}\n${AUTO_END}`;
+  // 헤딩에 날짜를 박는다. 이게 없으면 brief가 수동 `## 지금 상태` 와 자동 요약 중
+  // 어느 쪽이 최신인지 판단할 수 없어, 낡은 수동 섹션이 갓 만든 자동 요약을 이긴다.
+  const stamp = new Date().toISOString().slice(0, 10);
+  const section = `${AUTO_START}\n## 자동 상태 (compactor, ${stamp})\n${context}\n${AUTO_END}`;
   let body = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '# Context\n';
   const start = body.indexOf(AUTO_START);
   const end = body.indexOf(AUTO_END);
@@ -206,7 +209,12 @@ function moveToUnfiled(file, originalName) {
 }
 
 function main() {
-  const spoolFile = process.argv[2];
+  const args = process.argv.slice(2);
+  // --mid-session: 아직 살아있는 세션의 spool을 중간에 비울 때 쓴다.
+  // 차이는 딱 하나 — 마커를 지우지 않는다. 마커를 지우면 그 세션의 이후 활동이
+  // 태스크 귀속을 잃고 unfiled로 빠진다 (세션 종료용 코드를 그대로 쓰면 나는 사고).
+  const midSession = args.includes('--mid-session');
+  const spoolFile = args.find(a => !a.startsWith('--'));
   if (!spoolFile || !fs.existsSync(spoolFile)) return;
   const sessionId = path.basename(spoolFile, '.jsonl');
 
@@ -224,7 +232,7 @@ function main() {
   const events = readEvents(procFile);
   if (events.length < MIN_EVENTS) {
     fs.unlinkSync(procFile);
-    removeMarker(sessionId);
+    if (!midSession) removeMarker(sessionId);
     return;
   }
 
@@ -273,7 +281,7 @@ function main() {
         const text = harvested || blocks.recap;
         if (text) {
           const source = harvested ? 'away_summary' : 'haiku';
-          const result = recap.writeRecap(taskDir, text, new Date().toISOString().slice(0, 10));
+          const result = recap.writeRecap(taskDir, text, new Date().toISOString().slice(0, 10), source);
           log(`recap-${result}: ${seg.task.slug} (${source})`);
         } else {
           log(`recap-none: ${seg.task.slug}`);
@@ -283,7 +291,7 @@ function main() {
         log(`recap-error: ${seg.task.slug}: ${e.message}`);
       }
 
-      log(`ok: ${path.basename(spoolFile)} → ${seg.task.slug} (${seg.events.length} events)`);
+      log(`ok${midSession ? '(mid)' : ''}: ${path.basename(spoolFile)} → ${seg.task.slug} (${seg.events.length} events)`);
     } catch (e) {
       failed++;
       log(`error: ${seg.task.slug}: ${e.message}`);
@@ -292,7 +300,8 @@ function main() {
 
   if (failed === 0) {
     fs.unlinkSync(procFile);
-    removeMarker(sessionId);
+    // 중간 플러시는 마커를 남긴다 — 세션이 계속 이 태스크에 기록해야 한다.
+    if (!midSession) removeMarker(sessionId);
   } else {
     // 실패 구간 재시도를 위해 spool 복원 → 다음 세션에서 재시도
     // (성공한 구간은 재시도 시 journal에 중복될 수 있음 — log 참조)

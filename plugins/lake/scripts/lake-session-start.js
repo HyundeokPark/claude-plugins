@@ -345,12 +345,14 @@ function recoverOrphanSpools(currentSessionId) {
     }
   }
 
-  // spool 없이 남은 고아 마커(세션별 태스크 귀속 기록) 청소 — 7일 지난 것
+  // 고아 마커(세션별 태스크 귀속)와 플러시 스탬프 청소 — 7일 지난 것.
+  // 스탬프는 세션당 1개씩 쌓이므로 안 치우면 무한히 는다.
   try {
-    const markersDir = path.join(spool.SPOOL_DIR, 'markers');
-    if (fs.existsSync(markersDir)) {
-      for (const m of fs.readdirSync(markersDir)) {
-        const mf = path.join(markersDir, m);
+    for (const sub of ['markers', 'flush']) {
+      const dir = path.join(spool.SPOOL_DIR, sub);
+      if (!fs.existsSync(dir)) continue;
+      for (const m of fs.readdirSync(dir)) {
+        const mf = path.join(dir, m);
         if (now - fs.statSync(mf).mtimeMs > 7 * 24 * 60 * 60 * 1000) fs.unlinkSync(mf);
       }
     }

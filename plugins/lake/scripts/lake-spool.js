@@ -61,14 +61,28 @@ function readStdinJson(timeoutMs = 800) {
   return new Promise((resolve) => {
     const chunks = [];
     let done = false;
+    // 타임아웃으로 끝났는데 stdin이 아직 열려 있으면(파이프 상대가 안 닫는 경우),
+    // 'data' 리스너가 핸들을 붙들어 이벤트 루프가 죽지 않는다 → 훅 프로세스가
+    // 영영 안 끝난다. 실제로 이 상태로 테스트 러너가 멈췄다. 끝나면 반드시 놓는다.
+    const release = () => {
+      try {
+        process.stdin.removeListener('data', onData);
+        process.stdin.removeListener('end', finish);
+        process.stdin.removeListener('error', finish);
+        process.stdin.pause();
+      } catch { /* 정리 실패가 결과를 바꿔선 안 된다 */ }
+    };
+    const onData = (c) => chunks.push(c);
     const finish = () => {
       if (done) return;
       done = true;
+      clearTimeout(timer);
+      release();
       try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf-8'))); }
       catch { resolve({}); }
     };
-    setTimeout(finish, timeoutMs);
-    process.stdin.on('data', (c) => chunks.push(c));
+    const timer = setTimeout(finish, timeoutMs);
+    process.stdin.on('data', onData);
     process.stdin.on('end', finish);
     process.stdin.on('error', finish);
   });

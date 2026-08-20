@@ -233,13 +233,16 @@ $CLI resume plan-dropped --view=full | grep -q '죽은 할 일' || ok=0
 if [ "$ok" = 1 ]; then pass "AC-Plan-Dropped-Not-Next"; else fail "AC-Plan-Dropped-Not-Next"; fi
 
 echo "=== AC-Plan-Waiting-Section (대기 [~] 는 별도 섹션 + 기한 경과 경고) ==="
-make_plan_task plan-waiting '# Plan
+# until 날짜를 하드코딩하면 그 날이 지나는 순간 '미래 대기'가 '기한 지남'으로 바뀌어
+# AC가 저절로 깨진다 (2026-08-18로 박아뒀다가 실제로 터졌다). 오늘 기준 상대값으로 잡는다.
+FUTURE_UNTIL=$(node -e 'const d=new Date();d.setDate(d.getDate()+30);console.log(d.toISOString().slice(0,10))')
+make_plan_task plan-waiting "# Plan
 
 ## Checklist
 - [ ] 착수 가능한 일
-- [~] (until: 2026-08-18) 미래 이벤트 대기
+- [~] (until: $FUTURE_UNTIL) 미래 이벤트 대기
 - [~] (until: 2001-01-01) 이미 지난 이벤트 대기
-'
+"
 $CLI resume plan-waiting > $TMP/pw.out
 next_block=$(sed -n '/## ▶ 이제 할 차례/,/^$/p' $TMP/pw.out)
 ok=1
@@ -427,6 +430,74 @@ grep -q '한 줄 목표다' $TMP/gk.out || ok=0
 grep -q '잡다한 머리말' $TMP/gk.out && ok=0
 grep -q '안 나와야 한다' $TMP/gk.out && ok=0
 if [ "$ok" = 1 ]; then pass "AC-Goal-Korean-Heading"; else fail "AC-Goal-Korean-Heading"; fi
+
+echo '=== AC-Context-Korean-State (손으로 쓴 ## 지금 상태 가 brief에 뜬다) ==='
+# v1.10.1까지 brief는 compactor 자동 구간만 봤다. 사람이 한국어 헤딩으로 정리한
+# 상태는 통째로 무시돼, 정성껏 관리한 태스크일수록 브리프가 비었다.
+make_plan_task ctx-ko-state '# Plan
+
+## Checklist
+- [ ] ★1 배포한다
+'
+printf -- '# Context\n\n## 좌표\n표 같은 것.\n\n## 지금 상태 (2026-08-21)\n\n코드 착수 직전. 막힌 것은 사용자 답 하나다.\n\n## 실측 수치\n안 나와야 한다.\n' \
+  > "$PLAN_LAKE/inprogress/ctx-ko-state/context.md"
+$CLI resume ctx-ko-state > $TMP/cks.out
+ok=1
+grep -q '지금 상태' $TMP/cks.out || ok=0
+grep -q '막힌 것은 사용자 답 하나다' $TMP/cks.out || ok=0
+grep -q '2026-08-21' $TMP/cks.out || ok=0            # 출처 날짜를 밝힌다
+grep -q '안 나와야 한다' $TMP/cks.out && ok=0         # 다음 섹션을 삼키지 않는다
+grep -q 'lake:auto-context' $TMP/cks.out && ok=0
+# 상태는 "이제 할 차례"보다 위에 온다 — 뭘 할지 정하기 전에 읽어야 한다
+state_ln=$(grep -n '지금 상태' $TMP/cks.out | head -1 | cut -d: -f1)
+next_ln=$(grep -n '이제 할 차례' $TMP/cks.out | head -1 | cut -d: -f1)
+[ -n "$state_ln" ] && [ -n "$next_ln" ] && [ "$state_ln" -lt "$next_ln" ] || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Context-Korean-State"; else fail "AC-Context-Korean-State"; fi
+
+echo '=== AC-Context-Korean-Blockers (## 막힌 것 이 Blockers로 잡힌다) ==='
+make_plan_task ctx-ko-block '# Plan
+
+## Checklist
+- [ ] 할 일
+'
+printf -- '# Context\n\n## 막힌 것\n- 사용자 답 대기 중\n\n## 딴 섹션\n무관.\n' \
+  > "$PLAN_LAKE/inprogress/ctx-ko-block/context.md"
+$CLI resume ctx-ko-block > $TMP/ckb.out
+ok=1
+grep -q '🚧 Blockers' $TMP/ckb.out || ok=0
+grep -q '사용자 답 대기 중' $TMP/ckb.out || ok=0
+grep -q '무관' $TMP/ckb.out && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Context-Korean-Blockers"; else fail "AC-Context-Korean-Blockers"; fi
+
+echo '=== AC-Context-Auto-Blocker-None (자동 구간의 블로커: 없음 은 블로커가 아니다) ==='
+make_plan_task ctx-none-block '# Plan
+
+## Checklist
+- [ ] 할 일
+'
+printf -- '# Context\n\n<!-- lake:auto-context:start -->\n## 자동 상태 (compactor)\n현재: 이만큼 됐다.\n다음: 저걸 한다.\n블로커: 없음. 다음 단계로 진행 가능.\n<!-- lake:auto-context:end -->\n' \
+  > "$PLAN_LAKE/inprogress/ctx-none-block/context.md"
+$CLI resume ctx-none-block > $TMP/cnb.out
+ok=1
+grep -q '이만큼 됐다' $TMP/cnb.out || ok=0          # 자동 현재/다음은 상태로 뜬다
+grep -q '저걸 한다' $TMP/cnb.out || ok=0
+grep -q '🚧 Blockers' $TMP/cnb.out && ok=0          # "없음" 은 블로커로 보고하지 않는다
+grep -q 'lake:auto-context' $TMP/cnb.out && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Context-Auto-Blocker-None"; else fail "AC-Context-Auto-Blocker-None"; fi
+
+echo '=== AC-Context-Manual-Beats-Auto (수동 ## 지금 상태 가 자동 요약을 이긴다) ==='
+make_plan_task ctx-manual-wins '# Plan
+
+## Checklist
+- [ ] 할 일
+'
+printf -- '# Context\n\n## 지금 상태\n사람이 확정한 최신 사실.\n\n<!-- lake:auto-context:start -->\n## 자동 상태 (compactor)\n현재: 낡은 자동 요약.\n다음: 낡은 다음 할 일.\n<!-- lake:auto-context:end -->\n' \
+  > "$PLAN_LAKE/inprogress/ctx-manual-wins/context.md"
+$CLI resume ctx-manual-wins > $TMP/cmw.out
+ok=1
+grep -q '사람이 확정한 최신 사실' $TMP/cmw.out || ok=0
+grep -q '낡은 자동 요약' $TMP/cmw.out && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Context-Manual-Beats-Auto"; else fail "AC-Context-Manual-Beats-Auto"; fi
 
 echo ""
 echo "================================"

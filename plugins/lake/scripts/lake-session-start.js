@@ -15,6 +15,7 @@ const { spawn } = require('child_process');
 const spool = require('./lake-spool');
 const plan = require('./lake-plan');
 const recap = require('./lake-recap');
+const ctxlib = require('./lake-context');
 
 const LAKE_DIR = path.join(process.env.HOME, '.claude', 'prd-lake');
 const INPROGRESS = path.join(LAKE_DIR, 'inprogress');
@@ -107,27 +108,95 @@ function buildNotification() {
 // 사용자가 인수인계 문서를 직접 열지 않아도, 새 세션의 AI가 최근 태스크의
 // 마지막 상태(compactor가 갱신한 자동 상태 섹션)를 알고 시작하게 한다.
 
-function readAutoContext(slug) {
+const STATE_MAX_CHARS = 600;
+
+function clipState(text) {
+  // 브리핑은 들여쓴 블록으로 렌더된다 — 빈 줄이 그대로 남으면 공백만 든 줄이 생긴다.
+  const s = String(text || '').replace(/\n\s*\n+/g, '\n').trim();
+  if (!s) return null;
+  return s.length > STATE_MAX_CHARS ? s.slice(0, STATE_MAX_CHARS - 1) + '…' : s;
+}
+
+function fileDate(p) {
   try {
-    const c = fs.readFileSync(path.join(INPROGRESS, slug, 'context.md'), 'utf-8');
-    const m = c.match(/<!-- lake:auto-context:start -->[\s\S]*?\n([\s\S]*?)<!-- lake:auto-context:end -->/);
-    if (!m) return null;
-    const body = m[1].replace(/^## .*\n/, '').trim();
-    return body ? body.slice(0, 300) : null;
+    return new Date(fs.statSync(p).mtimeMs).toISOString().slice(0, 10);
+  } catch {
+    return null;
+  }
+}
+
+// context.md의 "지금 상태". 파싱은 lake-context 한 곳에만 있다 — resume brief와
+// 같은 규칙을 봐야 한다. 과거엔 여기서 compactor 자동 구간만 정규식으로 긁었고,
+// 사람이 손으로 쓴 `## 지금 상태` 는 헤딩이 한국어라 통째로 무시됐다.
+// 그래서 제일 잘 정리된 태스크가 브리핑에서 제일 조용했다.
+function readContextState(slug) {
+  const file = path.join(INPROGRESS, slug, 'context.md');
+  try {
+    const st = ctxlib.currentState(fs.readFileSync(file, 'utf-8'));
+    if (!st) return null;
+    return {
+      text: st.text,
+      date: st.date || fileDate(file),
+      // 라벨을 붙여야 AI가 자동 요약을 사람이 확정한 사실로 오해하지 않는다.
+      label: st.source === 'manual' ? 'context.md' : '자동 요약',
+      manual: st.source === 'manual',
+    };
+  } catch {
+    return null;
+  }
+}
+
+// 막힌 것. 상태 문장과 별도로 낸다 — 브리핑이 막힌 항목을 조용히 빠뜨리면
+// 새 세션은 그걸 '바로 착수 가능한 다음 할 일'로 보고한다.
+function readBlockers(slug) {
+  try {
+    const found = ctxlib.blockers(fs.readFileSync(path.join(INPROGRESS, slug, 'context.md'), 'utf-8'));
+    return found ? found.text : null;
   } catch {
     return null;
   }
 }
 
 // 사람용 요약(📍) — spec.md 맨 위. Claude Code의 away_summary를 compactor가 수확한 것.
-// 대화 전체를 보고 쓴 문장이라 "현재/다음/블로커" 라벨 요약보다 상황 파악이 빠르다.
+// 대화가 어디까지 갔는지를 말한다. 본문은 `(YYYY-MM-DD) ` 로 시작한다(lake-recap).
 function readHumanRecap(slug) {
   try {
     const s = fs.readFileSync(path.join(INPROGRESS, slug, 'spec.md'), 'utf-8');
     const body = recap.extractFromSpec(s);
-    return body ? body.slice(0, 300) : null;
+    if (!body) return null;
+    const m = body.match(/^\((\d{4}-\d{2}-\d{2})\)\s*/);
+    return { text: body, date: m ? m[1] : null, label: '지난 세션 요약', manual: false };
   } catch {
     return null;
+  }
+}
+
+// 무엇을 브리핑에 실을지 고른다.
+//
+// 규칙 1 — 사람이 손으로 쓴 `## 지금 상태` 가 있으면 그게 정본이다. 대화 전체를 보고
+//   의도적으로 남긴 문장이고, 자동 요약은 도구 호출 로그만 보고 만든 것이다.
+// 규칙 2 — 없으면 📍 요약과 자동 요약 중 **더 최신** 을 쓴다. 예전엔 `recap || auto` 라
+//   2주 전 recap이 3일 전 자동 요약을 이겼다. 낡은 쪽이 이기는 우선순위가
+//   "브리프에 계속 틀린 내용이 담긴다"의 나머지 절반이었다.
+function pickState(slug) {
+  const ctx = readContextState(slug);
+  if (ctx && ctx.manual) return ctx;
+
+  const rec = readHumanRecap(slug);
+  const candidates = [ctx, rec].filter(Boolean);
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  return candidates[0];
+}
+
+// 아직 compactor가 처리하지 못한 세션 활동. 있으면 "자동 기록이 최신이 아니다" 는 뜻이다.
+// 조용히 두면 AI는 며칠 전 요약을 지금 상태로 믿는다.
+function pendingSpoolCount() {
+  try {
+    return fs.readdirSync(spool.SPOOL_DIR)
+      .filter(f => f.endsWith('.jsonl') || f.endsWith('.jsonl.processing')).length;
+  } catch {
+    return 0;
   }
 }
 
@@ -149,8 +218,19 @@ function buildBriefing(cwd) {
     const lines = [];
     for (const t of inprog.slice(0, 3)) {
       lines.push(`- [${t.id}] ${t.title} (${t.project || '-'}, updated ${t.updated})`);
-      const state = readHumanRecap(t.slug) || readAutoContext(t.slug);
-      if (state) lines.push('  ' + state.replace(/\n/g, '\n  '));
+      const state = pickState(t.slug);
+      const body = state && clipState(state.text);
+      if (body) {
+        // 출처와 날짜를 반드시 같이 낸다. 라벨 없는 요약은 AI가 '지금 확정된 사실'로 읽는다.
+        lines.push(`  [${state.label}${state.date ? ` · ${state.date}` : ''}] ` +
+          body.replace(/\n/g, '\n  '));
+      }
+      const blocked = readBlockers(t.slug);
+      if (blocked) {
+        // 원문이 `- ` 불릿이면 🚧 뒤에 그대로 붙어 "🚧 - ..." 로 읽힌다. 첫 불릿만 걷는다.
+        const blockerBody = clipState(blocked).replace(/^-\s+/, '');
+        lines.push(`  🚧 ${blockerBody.replace(/\n/g, '\n     ')}`);
+      }
       // 자동 기록(journal/context)은 훅이 갱신하지만 plan.md는 사람·AI 재량이라
       // 혼자 썩는다. 낡은 채로 브리핑하면 다음 세션이 죽은 할 일을 보고한다.
       const stale = plan.planStaleInfo(path.join(INPROGRESS, t.slug));
@@ -158,6 +238,16 @@ function buildBriefing(cwd) {
         lines.push(`  ⚠ plan.md가 저널보다 낡음 (plan ${stale.planDate} < journal ${stale.journalDate})` +
           ` — 할 일 목록을 그대로 믿지 말고 \`lake-cli.js plan-check ${t.id}\` 를 먼저 실행하라.`);
       }
+    }
+
+    // 직전 세션이 방금 끝났으면 그 활동은 아직 spool에 있다 (compactor는 세션 종료
+    // 후에, 고아 복구는 30분 뒤에 돈다). 그 사실을 말하지 않으면 새 세션은 아래 상태를
+    // "이게 마지막"으로 믿는다 — 실제로는 직전 세션에서 정한 게 통째로 빠져 있다.
+    const pending = pendingSpoolCount();
+    if (pending > 0) {
+      lines.push(`⚠ 미반영 세션 활동 ${pending}건 (spool 대기 중) — 위 상태에 직전 세션 내용이 빠져 있을 수 있다.`);
+      lines.push('  직전 세션에서 정한 걸 물으면, 위 요약만 믿지 말고 사용자에게 확인하거나 ' +
+        '`node ~/.claude/prd-lake/lake-cli.js resume <id>` 로 원문을 읽어라.');
     }
 
     return `[PRD Lake 자동 브리핑] 최근 진행 중 태스크와 마지막 상태:\n${lines.join('\n')}\n` +
@@ -178,7 +268,7 @@ function ensureLakeSetup() {
 
   // lake-cli.js가 require하는 모듈을 **먼저** 배포한다. 순서가 뒤집히면
   // 새 cli는 배포됐는데 의존 모듈이 없는 순간이 생겨 lake 전체가 죽는다.
-  for (const dep of ['lake-plan.js', 'lake-recap.js']) {
+  for (const dep of ['lake-plan.js', 'lake-recap.js', 'lake-context.js']) {
     const depSrc = path.join(__dirname, dep);
     if (!fs.existsSync(depSrc)) continue;
     const depDst = path.join(LAKE_DIR, dep);

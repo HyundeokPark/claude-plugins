@@ -27,6 +27,7 @@ const path = require('path');
 const crypto = require('crypto');
 const planlib = require('./lake-plan');
 const recaplib = require('./lake-recap');
+const ctxlib = require('./lake-context');
 
 const LAKE_DIR = path.join(process.env.HOME, '.claude', 'prd-lake');
 const INDEX_PATH = path.join(LAKE_DIR, 'index.json');
@@ -205,7 +206,7 @@ function relDate(ymd) {
 
 // --- Version & Flag Contract ---
 
-const LAKE_CLI_VERSION = '1.5.0';
+const LAKE_CLI_VERSION = '1.6.0';
 
 const VIEW_DEFAULTS = {
   resume: 'brief', // briefing-style digest (Goal/Done/Next/Blockers/Context, no journal) — AI can act directly from this
@@ -1033,6 +1034,20 @@ function renderResumeBrief(task, index, dir) {
     out += `## 📌 이 lake는\n${goalClean}\n\n`;
   }
 
+  // "지금 상태" — context.md의 정본 상태. 이게 없어서 브리프가 계속 틀렸다.
+  // 예전엔 compactor 자동 구간만 봤고, 사람이 손으로 갱신한 `## 지금 상태` 는
+  // 헤딩이 한국어라는 이유로 통째 무시됐다. 그 결과 정성껏 정리한 태스크일수록
+  // 브리프가 비고, AI는 plan.md의 ★1 을 '막힘 없는 다음 할 일'로 읽었다.
+  // Goal 바로 아래, ▶ 보다 위에 둔다 — 무엇을 할지 정하기 전에 읽어야 하는 정보다.
+  const state = ctxlib.currentState(contextRaw);
+  if (state) {
+    const label = state.source === 'manual'
+      ? `## 🧭 지금 상태 (context.md${state.date ? ` · ${state.date}` : ''})`
+      : '## 🧭 지금 상태 (자동 요약 — 도구 로그 기준)';
+    const { text: stateText } = truncateLines(state.text, 12, 900, '지금 상태');
+    out += `${label}\n${stateText}\n\n`;
+  }
+
   // "최근 완료" — plan.md에서 [x] 항목을 모두 모아 마지막 3개를 보여준다.
   // 사용자는 plan.md를 시간순(위→아래)으로 쓰는 경우가 많아, 위에서 잘라온 3개는
   // 사실 가장 오래된 항목이다. 마지막 3개여야 진짜 최근.
@@ -1071,12 +1086,18 @@ function renderResumeBrief(task, index, dir) {
     out += `## ⏳ 대기중 (외부 이벤트)\n${lines.join('\n')}\n\n`;
   }
 
+  // 영어 `## Blockers` 는 종전 경로 그대로(골든 바이트 동일). 그게 없을 때만
+  // 한국어 헤딩(`## 막힌 것`)과 자동 구간의 `블로커:` 줄로 넓힌다.
+  // 막힌 걸 못 보여주면 브리프는 막힌 항목을 '이제 할 차례'로 내놓는다.
   const blockers = extractBlockersSection(contextRaw);
-  if (blockers && blockers.trim()) {
-    const cleaned = blockers.replace(/^##?\s*Blockers\s*\n?/i, '').trim();
-    if (cleaned) {
-      out += `## 🚧 Blockers\n${cleaned}\n\n`;
-    }
+  let blockerBody = blockers ? blockers.replace(/^##?\s*Blockers\s*\n?/i, '').trim() : '';
+  if (!blockerBody) {
+    const found = ctxlib.blockers(contextRaw);
+    if (found) blockerBody = found.text;
+  }
+  if (blockerBody) {
+    const { text: blockerText } = truncateLines(blockerBody, 10, 800, 'Blockers');
+    out += `## 🚧 Blockers\n${blockerText}\n\n`;
   }
 
   const ctxLines = [];

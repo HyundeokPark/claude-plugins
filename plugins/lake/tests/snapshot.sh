@@ -551,23 +551,21 @@ echo "  → $RD"
 [ "$RD" = "created|kept-better|written|kept|blocked|upgraded" ] || ok=0
 if [ "$ok" = 1 ]; then pass "AC-Recap-No-Downgrade"; else fail "AC-Recap-No-Downgrade"; fi
 
-echo '=== AC-Version-Manifests-Agree (marketplace.json 과 plugin.json 버전 일치) ==='
-# 8/14 이후 plugin.json 만 올리고 marketplace.json 은 1.10.0 에 방치됐다.
-# 리로드는 plugin.json 을 보므로 이 맥북에서는 안 드러났지만, 다른 기기가
-# 마켓플레이스 목록으로 업데이트하면 낡은 버전을 최신으로 받는다.
-MP="$PLUGIN_DIR/../../.claude-plugin/marketplace.json"
-PJ="$PLUGIN_DIR/.claude-plugin/plugin.json"
-if [ -f "$MP" ] && [ -f "$PJ" ]; then
-  VER_CMP=$(node -e "
-    const fs=require('fs');
-    const mp=JSON.parse(fs.readFileSync('$MP','utf-8'));
-    const pj=JSON.parse(fs.readFileSync('$PJ','utf-8'));
-    const e=(mp.plugins||[]).find(p=>p.name==='lake');
-    console.log((e&&e.version)===pj.version ? 'match' : 'MISMATCH mp='+(e&&e.version)+' pj='+pj.version);
-  ")
-  if [ "$VER_CMP" = "match" ]; then pass "AC-Version-Manifests-Agree"; else fail "AC-Version-Manifests-Agree ($VER_CMP)"; fi
+echo '=== AC-Version-Manifests-Agree (버전이 적힌 모든 자리가 일치) ==='
+# 버전 숫자는 marketplace.json / plugin.json / lake-cli.js 세 곳에 적힌다.
+# 8/14 이후 세 번의 릴리스에서 marketplace.json 만 계속 빠져 1.10.0 에 멈춰 있었다.
+# 규칙은 tools/bump.mjs 한 곳에만 둔다 — 검사 로직을 여기 복붙하면 릴리스 절차와
+# 테스트가 따로 놀게 되고, 그게 애초에 드리프트가 난 이유다.
+BUMP="$PLUGIN_DIR/../../tools/bump.mjs"
+if [ -f "$BUMP" ]; then
+  if BUMP_OUT=$(node "$BUMP" --check 2>&1); then
+    pass "AC-Version-Manifests-Agree ($BUMP_OUT)"
+  else
+    fail "AC-Version-Manifests-Agree"
+    printf '%s\n' "$BUMP_OUT" | sed 's/^/    /'
+  fi
 else
-  fail "AC-Version-Manifests-Agree (manifest 파일을 못 찾음)"
+  fail "AC-Version-Manifests-Agree (tools/bump.mjs 없음 — 릴리스 절차가 사라졌다)"
 fi
 
 echo ""

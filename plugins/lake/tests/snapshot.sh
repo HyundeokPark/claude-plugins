@@ -551,6 +551,25 @@ echo "  → $RD"
 [ "$RD" = "created|kept-better|written|kept|blocked|upgraded" ] || ok=0
 if [ "$ok" = 1 ]; then pass "AC-Recap-No-Downgrade"; else fail "AC-Recap-No-Downgrade"; fi
 
+echo '=== AC-Version-Manifests-Agree (marketplace.json 과 plugin.json 버전 일치) ==='
+# 8/14 이후 plugin.json 만 올리고 marketplace.json 은 1.10.0 에 방치됐다.
+# 리로드는 plugin.json 을 보므로 이 맥북에서는 안 드러났지만, 다른 기기가
+# 마켓플레이스 목록으로 업데이트하면 낡은 버전을 최신으로 받는다.
+MP="$PLUGIN_DIR/../../.claude-plugin/marketplace.json"
+PJ="$PLUGIN_DIR/.claude-plugin/plugin.json"
+if [ -f "$MP" ] && [ -f "$PJ" ]; then
+  VER_CMP=$(node -e "
+    const fs=require('fs');
+    const mp=JSON.parse(fs.readFileSync('$MP','utf-8'));
+    const pj=JSON.parse(fs.readFileSync('$PJ','utf-8'));
+    const e=(mp.plugins||[]).find(p=>p.name==='lake');
+    console.log((e&&e.version)===pj.version ? 'match' : 'MISMATCH mp='+(e&&e.version)+' pj='+pj.version);
+  ")
+  if [ "$VER_CMP" = "match" ]; then pass "AC-Version-Manifests-Agree"; else fail "AC-Version-Manifests-Agree ($VER_CMP)"; fi
+else
+  fail "AC-Version-Manifests-Agree (manifest 파일을 못 찾음)"
+fi
+
 echo ""
 echo "================================"
 echo "Results: $PASS passed, $FAIL failed"

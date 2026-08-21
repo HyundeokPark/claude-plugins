@@ -206,18 +206,22 @@ function relDate(ymd) {
 
 // --- Version & Flag Contract ---
 
-const LAKE_CLI_VERSION = '1.12.1';
+const LAKE_CLI_VERSION = '1.13.0';
 
 const VIEW_DEFAULTS = {
-  resume: 'brief', // briefing-style digest (Goal/Done/Next/Blockers/Context, no journal) — AI can act directly from this
+  // slim: 헤더 + recap 산문 + `다음:` 한 줄. brief의 기계 추출 섹션(Goal/상태/✅/▶/Blockers)은
+  // plan.md·context.md가 썩는 순간 거짓말이 되는데, recap(away_summary)만은 매 세션
+  // LLM이 새로 쓴 글이라 항상 맞았다 — 그래서 기본 화면을 recap 하나로 줄인다.
+  // recap이 없는 태스크는 보여줄 대체재가 없으므로 기존 brief로 폴백한다.
+  resume: 'slim',
   list:   'default',
   search: 'default',
 };
 
 const FLAG_SPEC = {
   resume: {
-    view: ['brief', 'summary', 'full', 'minimal', 'recap', 'files'],
-    aliases: { '--brief': 'brief', '--full': 'full', '--minimal': 'minimal', '--recap': 'recap', '--files': 'files', '--summary': 'summary' },
+    view: ['slim', 'brief', 'summary', 'full', 'minimal', 'recap', 'files'],
+    aliases: { '--slim': 'slim', '--brief': 'brief', '--full': 'full', '--minimal': 'minimal', '--recap': 'recap', '--files': 'files', '--summary': 'summary' },
   },
   list: {
     view: ['default', 'compressed', 'tree', 'all'],
@@ -250,7 +254,7 @@ const LIST_MAX_DONE = 3;
 const USAGE = `Usage: lake-cli.js <command> [args]
 Commands: list, resume, save, done, search, summary, plan-check, version,
           link, unlink, tree, relate, unrelate, tag, untag, block, unblock, rebuild, find, upsert
-Views: resume --view=summary|full|minimal|files   (v1 default: full)
+Views: resume --view=slim|brief|summary|full|minimal|recap|files  (default: slim — recap 없으면 brief 폴백)
        list   --view=default|compressed|tree|all  (v1 default: default)
        search --view=default|compressed|full      (v1 default: default; v2 also default)
 Flags: --limit N   --no-color   -h/--help   -v/--version
@@ -570,6 +574,7 @@ function cmdResume(rawArgs) {
 
   switch (view) {
     case 'full':    process.stdout.write(renderResumeFull(task, index, dir)); return;
+    case 'slim':    process.stdout.write(renderResumeSlim(task, index, dir)); return;
     case 'brief':   process.stdout.write(renderResumeBrief(task, index, dir)); return;
     case 'summary': process.stdout.write(renderResumeSummary(task, index, dir)); return;
     case 'minimal':
@@ -985,6 +990,35 @@ function renderResumeMinimal(task, index, dir) {
   }
 
   out += '(recap · --view=summary or --view=full for more detail)\n';
+  return out;
+}
+
+function renderResumeSlim(task, index, dir) {
+  // 기본 뷰. recap(away_summary — LLM이 세션마다 새로 쓴 산문)만 보여준다.
+  // brief의 나머지 섹션은 낡은 plan.md/context.md의 기계 추출이라, 파일이 썩는 순간
+  // 화면 절반이 거짓말이 되고 그걸 메꾸는 ⚠ 경고·라벨로 출력만 길어졌다.
+  const specRaw = readFileSafe(path.join(dir, 'spec.md')) || '';
+  const recap = extractSpecHumanRecap(specRaw);
+  if (!recap) return renderResumeBrief(task, index, dir); // 대체재가 없으면 옛 화면이 최선
+
+  const days = Math.max(0, daysSince(task.updated));
+  const ago = days === 0 ? 'today' : days === 1 ? '1d ago' : `${days}d ago`;
+  let out = `=== ${task.title} [${task.id}] · ${task.status} · ${ago} ===\n\n`;
+  out += `${recap}\n`;
+
+  // recap에 "다음"이 이미 있으면 중복시키지 않는다. 없을 때만 plan.md의 최우선
+  // 미결 항목을 한 줄로 — 단 plan.md가 저널보다 낡았으면 그 항목 자체가 의심스러우니
+  // 아예 내지 않는다 (낡은 할 일을 '다음'으로 단정하는 사고가 이 뷰를 만든 이유다).
+  if (!/다음|next/i.test(recap) && !planlib.planStaleInfo(dir)) {
+    const planRaw = readFileSafe(path.join(dir, 'plan.md')) || '';
+    const top = extractPlanUnresolvedTop(planRaw, 1);
+    if (top.length > 0) {
+      const body = top[0].replace(/^\s*- \[ \]\s*/, '').replace(/^★\d*\s*/, '').trim();
+      if (body) out += `\n다음: ${body}\n`;
+    }
+  }
+
+  out += `\n(slim · 자세히: --view=brief · 전체: --view=full)\n`;
   return out;
 }
 

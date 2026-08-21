@@ -338,7 +338,7 @@ make_plan_task recap-render '# Plan
 '
 printf -- '# recap-render\n\n## 📍 사람용 요약\n<!-- lake:auto-recap -->\n(2026-08-14) 뭘 하던 중이고 여기까지 됐습니다. 다음은 저것입니다.\n\n- **Project**: t\n- **Updated**: 2026-08-01\n\n## Goal\n원래 목표.\n' \
   > "$PLAN_LAKE/inprogress/recap-render/spec.md"
-$CLI resume recap-render > $TMP/rr.out
+$CLI resume recap-render --view=brief > $TMP/rr.out
 $CLI resume recap-render --view=recap > $TMP/rr2.out
 ok=1
 grep -q '## 📍 지난 세션 요약' $TMP/rr.out || ok=0
@@ -361,12 +361,44 @@ make_plan_task recap-bound '# Plan
 '
 printf -- '# recap-bound\n\n## 📍 사람용 요약\n<!-- lake:auto-recap -->\n(2026-08-14) 진짜 요약 한 문단.\n\n**Updated:** 2026-08-11\n**상태:** 삼켜지면 안 되는 메타\n\n---\n\n## 목표\n목표 한 줄.\n' \
   > "$PLAN_LAKE/inprogress/recap-bound/spec.md"
-$CLI resume recap-bound > $TMP/rb.out
+$CLI resume recap-bound --view=brief > $TMP/rb.out
 ok=1
 grep -q '진짜 요약 한 문단' $TMP/rb.out || ok=0
 grep -q '삼켜지면 안 되는 메타' $TMP/rb.out && ok=0
 grep -q '목표 한 줄' $TMP/rb.out || ok=0            # Goal은 정상 추출
 if [ "$ok" = 1 ]; then pass "AC-Recap-Section-Bounded"; else fail "AC-Recap-Section-Bounded"; fi
+
+echo "=== AC-Slim-Default (기본 뷰 = 헤더+recap 산문만, 기계 추출 섹션 없음) ==="
+# recap이 있으면 slim: 헤딩 없는 recap 산문 + footer. brief의 Goal/상태/▶ 섹션은
+# 낡은 파일의 기계 추출이라 기본 화면에서 뺀다 (v1.13.0 사용자 결정).
+$CLI resume recap-render > $TMP/sd.out
+ok=1
+grep -q '뭘 하던 중이고 여기까지 됐습니다' $TMP/sd.out || ok=0   # recap 산문 노출
+grep -q '## 📍' $TMP/sd.out && ok=0                              # 헤딩 없이 산문만
+grep -q '📌' $TMP/sd.out && ok=0                                 # Goal 섹션 미출력
+grep -q '이제 할 차례' $TMP/sd.out && ok=0                        # plan 추출 섹션 미출력
+grep -q '^다음:' $TMP/sd.out && ok=0                             # recap에 '다음'이 있으니 중복 금지
+grep -q 'view=brief' $TMP/sd.out || ok=0                         # 상세로 가는 길 안내
+# recap에 '다음'이 없으면 plan 최우선(★) 1건을 '다음:' 한 줄로
+make_plan_task slim-next '# Plan
+
+## Checklist
+- [ ] 곁가지
+- [ ] ★1 급한 것
+'
+printf -- '# slim-next\n\n## 📍 사람용 요약\n<!-- lake:auto-recap -->\n(2026-08-14) 조사만 끝냈습니다.\n\n## Goal\nG.\n' \
+  > "$PLAN_LAKE/inprogress/slim-next/spec.md"
+$CLI resume slim-next > $TMP/sd2.out
+grep -q '^다음: 급한 것' $TMP/sd2.out || ok=0
+# plan.md가 저널보다 낡으면 '다음:' 자체를 내지 않는다 (낡은 할 일 단정 금지)
+printf -- '# 2026-08-13\n- 급한 것은 폐기함.\n' > "$PLAN_LAKE/inprogress/slim-next/journal/2026-08-13.md"
+touch -t 202608110900 "$PLAN_LAKE/inprogress/slim-next/plan.md"
+$CLI resume slim-next > $TMP/sd3.out
+grep -q '^다음:' $TMP/sd3.out && ok=0
+# recap이 없는 태스크는 기존 brief로 폴백 (대체재가 없다)
+$CLI resume plan-legacy > $TMP/sd4.out
+grep -q '이제 할 차례' $TMP/sd4.out || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Slim-Default"; else fail "AC-Slim-Default"; fi
 
 echo "=== AC-Plan-Priority-Star (★N 마커가 파일 순서를 이긴다) ==="
 # 실사고: plan.md는 시간순으로 덧붙는 문서라 "이번 주 최우선"이 6번째 줄에 깔렸고,

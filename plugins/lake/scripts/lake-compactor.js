@@ -37,6 +37,82 @@ function log(msg) {
   } catch { /* best-effort */ }
 }
 
+// ── 디버그 덤프 ──────────────────────────────────────────────────────
+// compactor.log는 결과 한 줄만 남겨서, 요약이 이상할 때 "입력에 없었나 /
+// 모델이 놓쳤나 / 판정 규칙이 버렸나"를 구분할 수 없다. 세그먼트마다
+// haiku 입력·원출력·away_summary 수확 근거·recap 판정을 통째로 남긴다.
+const DEBUG_DIR = path.join(SPOOL_DIR, 'debug');
+const DEBUG_KEEP = 30; // 최근 30개만 보존 — 프롬프트가 최대 80KB라 무한 보존은 곤란
+
+function fmtTs(ms) {
+  return ms ? new Date(ms).toISOString() : '?';
+}
+
+function renderHarvestDebug(h) {
+  if (!h) return '- (수확 시도 전에 실패)';
+  if (!h.transcript) return '- transcript: 없음 → away_summary 수확 불가, haiku 폴백';
+  const lines = [`- transcript: ${h.transcript}`];
+  lines.push(`- away_summary 전체: ${h.allTs.length}개${h.allTs.length ? ' — ' + h.allTs.map(fmtTs).join(', ') : ''}`);
+  if (h.window) {
+    lines.push(`- 구간 시간창: ${fmtTs(h.window.from)} ~ ${fmtTs(h.window.to)} (+${h.window.graceMs / 60000}분 grace)`);
+  } else {
+    lines.push('- 구간 시간창: 계산 불가 (이벤트 타임스탬프 없음)');
+  }
+  lines.push(`- 창 안 후보: ${h.inWindow.length}개 → ${h.picked ? '마지막 것 선택' : '없음, haiku 폴백'}`);
+  if (h.picked) lines.push(`- 선택된 텍스트: ${h.picked}`);
+  return lines.join('\n');
+}
+
+function buildDebugBody(dbg) {
+  const fence = '```';
+  const parts = [];
+  parts.push(`# compactor debug — ${dbg.slug}`);
+  parts.push([
+    `- 시각: ${new Date().toISOString()}`,
+    `- spool: ${dbg.spoolName} (구간 ${dbg.eventCount} events${dbg.midSession ? ', mid-session flush' : ''})`,
+    dbg.error ? `- ⚠ 에러: ${dbg.error}` : null,
+    dbg.parseOk === false ? '- ⚠ haiku 출력 파싱 실패 (===JOURNAL===/===CONTEXT=== 블록 없음)' : null,
+  ].filter(Boolean).join('\n'));
+
+  parts.push(`## 1. away_summary 수확 판단\n${renderHarvestDebug(dbg.harvest)}`);
+
+  const verdictLines = [
+    `- 최종 소스: ${dbg.source || '(없음)'}`,
+    `- writeRecap 판정: ${dbg.writeResult || '(호출 안 됨)'}`,
+    `- 기존 spec 요약(판정 전): ${dbg.existingRecap || '(없음)'}`,
+    `- 최종 후보 텍스트: ${dbg.finalText || '(없음)'}`,
+  ];
+  if (dbg.writeResult === 'kept-better') {
+    verdictLines.push('- ⚠ 버려짐: 위 후보 텍스트(haiku)가 기존 away_summary 요약에 밀려 폐기됨.');
+    verdictLines.push('  후보가 더 최신 상태를 담고 있다면 이 규칙(출처 강등 금지)이 손해를 낸 사례다.');
+  }
+  if (dbg.writeResult === 'manual-kept') {
+    verdictLines.push('- 수동 작성 요약이 있어 자동 요약을 쓰지 않음 (정상 동작).');
+  }
+  parts.push(`## 2. recap 판정\n${verdictLines.join('\n')}`);
+
+  parts.push(`## 3. haiku 입력 프롬프트\n${fence}\n${dbg.prompt || '(생성 전 실패)'}\n${fence}`);
+  parts.push(`## 4. haiku 원출력\n${fence}\n${dbg.raw || '(호출 실패 또는 출력 없음)'}\n${fence}`);
+  return parts.join('\n\n') + '\n';
+}
+
+function writeDebugDump(dbg) {
+  try {
+    fs.mkdirSync(DEBUG_DIR, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+    const file = path.join(DEBUG_DIR, `${stamp}-${dbg.slug}.md`);
+    fs.writeFileSync(file, buildDebugBody(dbg), 'utf-8');
+    // 보존 개수 초과분은 오래된 것부터 삭제 (파일명이 시각으로 시작 → 사전순 = 시간순)
+    const files = fs.readdirSync(DEBUG_DIR).filter(f => f.endsWith('.md')).sort();
+    for (const f of files.slice(0, Math.max(0, files.length - DEBUG_KEEP))) {
+      fs.unlinkSync(path.join(DEBUG_DIR, f));
+    }
+    return path.basename(file);
+  } catch { /* 디버그 실패가 본 처리를 막으면 안 된다 */
+    return null;
+  }
+}
+
 function readEvents(spoolFile) {
   const lines = fs.readFileSync(spoolFile, 'utf-8').split('\n').filter(Boolean);
   const events = [];
@@ -263,8 +339,22 @@ function main() {
       log(`skip: ${seg.task.slug} (inprogress에 없음, ${seg.events.length} events)`);
       continue;
     }
+    // 디버그 덤프용 수집기 — 실패 경로(파싱 실패·예외)에서도 남긴다.
+    // 요약이 이상할 때 가장 값진 게 바로 그 실패 케이스다.
+    const dbg = {
+      slug: seg.task.slug,
+      spoolName: path.basename(spoolFile),
+      eventCount: seg.events.length,
+      midSession,
+      prompt: null, raw: null, parseOk: null,
+      harvest: null, source: null, finalText: null,
+      existingRecap: null, writeResult: null, error: null,
+    };
     try {
-      const blocks = parseBlocks(summarize(buildPrompt(seg.task, seg.events)));
+      dbg.prompt = buildPrompt(seg.task, seg.events);
+      dbg.raw = summarize(dbg.prompt);
+      const blocks = parseBlocks(dbg.raw);
+      dbg.parseOk = !!blocks;
       if (!blocks) {
         failed++;
         log(`parse-fail: ${path.basename(spoolFile)} → ${seg.task.slug}`);
@@ -277,11 +367,22 @@ function main() {
       // 대화 전체를 보고 쓴 것이라 spool(도구 호출·프롬프트만)로 만든 것보다 정확하다.
       // 없는 세션(자리를 비우지 않았으면 안 생긴다)은 haiku RECAP 블록으로 대체.
       try {
-        const harvested = recap.harvest(sessionId, seg.events, recap.eventsCwd(seg.events));
+        dbg.harvest = recap.harvestDetailed(sessionId, seg.events, recap.eventsCwd(seg.events));
+        const harvested = dbg.harvest.picked;
         const text = harvested || blocks.recap;
+        dbg.finalText = text;
+        // writeRecap이 기존 요약을 지키면(kept-better/manual-kept) 후보가 버려진다 —
+        // 뭐가 버려졌는지 대조할 수 있게 판정 전의 기존 섹션을 떠 둔다.
+        try {
+          const spec = fs.readFileSync(path.join(taskDir, 'spec.md'), 'utf-8');
+          const sec = recap.findRecapSection(spec);
+          dbg.existingRecap = sec ? spec.slice(sec.start, sec.end).trim() : null;
+        } catch { /* spec 없음 — writeRecap이 no-spec으로 알려준다 */ }
         if (text) {
           const source = harvested ? 'away_summary' : 'haiku';
+          dbg.source = source;
           const result = recap.writeRecap(taskDir, text, new Date().toISOString().slice(0, 10), source);
+          dbg.writeResult = result;
           log(`recap-${result}: ${seg.task.slug} (${source})`);
         } else {
           log(`recap-none: ${seg.task.slug}`);
@@ -294,7 +395,11 @@ function main() {
       log(`ok${midSession ? '(mid)' : ''}: ${path.basename(spoolFile)} → ${seg.task.slug} (${seg.events.length} events)`);
     } catch (e) {
       failed++;
+      dbg.error = e.message;
       log(`error: ${seg.task.slug}: ${e.message}`);
+    } finally {
+      const dumpName = writeDebugDump(dbg);
+      if (dumpName) log(`debug-dump: ${dumpName}`);
     }
   }
 

@@ -92,26 +92,43 @@ function readAwaySummaries(transcriptPath) {
  * 창 안에 여러 개면 마지막(가장 최근 상태)을 쓴다.
  * 창 안에 없으면 null — 다른 태스크의 상태를 이 태스크에 적는 것보다 없는 게 낫다.
  */
-function pickForSegment(summaries, events) {
-  if (!summaries.length || !events || !events.length) return null;
+function pickForSegmentDetailed(summaries, events) {
+  const detail = { allTs: (summaries || []).map(s => s.ts), window: null, inWindow: [], picked: null };
+  if (!summaries.length || !events || !events.length) return detail;
   const stamps = events.map(e => new Date(e.t || 0).getTime()).filter(Boolean);
-  if (!stamps.length) return null;
+  if (!stamps.length) return detail;
   const from = Math.min(...stamps);
   const to = Math.max(...stamps);
   // 요약은 구간 활동 직후에 찍히기도 하므로 뒤쪽에 여유를 둔다.
   const GRACE_MS = 10 * 60 * 1000;
-  const inWindow = summaries.filter(s => s.ts >= from && s.ts <= to + GRACE_MS);
-  if (!inWindow.length) return null;
-  return inWindow[inWindow.length - 1].text;
+  detail.window = { from, to, graceMs: GRACE_MS };
+  detail.inWindow = summaries.filter(s => s.ts >= from && s.ts <= to + GRACE_MS);
+  if (detail.inWindow.length) detail.picked = detail.inWindow[detail.inWindow.length - 1].text;
+  return detail;
+}
+
+function pickForSegment(summaries, events) {
+  return pickForSegmentDetailed(summaries, events).picked;
+}
+
+/**
+ * harvest의 디버그 버전 — 무엇이 왜 선택/탈락했는지까지 반환한다.
+ * { transcript, allTs, window, inWindow, picked }
+ * compactor의 디버그 덤프가 "away_summary를 왜 (안) 골랐나"를 재구성하는 데 쓴다.
+ */
+function harvestDetailed(sessionId, events, cwdHint) {
+  const transcript = findTranscript(sessionId, cwdHint);
+  if (!transcript) return { transcript: null, allTs: [], window: null, inWindow: [], picked: null };
+  const detail = pickForSegmentDetailed(readAwaySummaries(transcript), events);
+  detail.transcript = transcript;
+  return detail;
 }
 
 /**
  * session_id + 구간 이벤트로 사람용 요약을 수확한다. 없으면 null.
  */
 function harvest(sessionId, events, cwdHint) {
-  const transcript = findTranscript(sessionId, cwdHint);
-  if (!transcript) return null;
-  return pickForSegment(readAwaySummaries(transcript), events);
+  return harvestDetailed(sessionId, events, cwdHint).picked;
 }
 
 function eventsCwd(events) {
@@ -222,7 +239,9 @@ module.exports = {
   findTranscript,
   readAwaySummaries,
   pickForSegment,
+  pickForSegmentDetailed,
   harvest,
+  harvestDetailed,
   eventsCwd,
   writeRecap,
 };

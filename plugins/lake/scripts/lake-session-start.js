@@ -183,7 +183,11 @@ function pickState(slug) {
   if (ctx && ctx.manual) return ctx;
 
   const rec = readHumanRecap(slug);
-  const candidates = [ctx, rec].filter(Boolean);
+  // 동률(같은 날)이면 recap이 이긴다 — away_summary는 대화 전체를 보고 쓴 것이고
+  // auto-context는 도구 로그만 본 것이다. compactor가 둘을 같은 날 쓰는 게 보통이라
+  // 동률이 흔한데, ctx가 이기면 더 나은 요약이 항상 가려진다. (정렬이 stable하므로
+  // rec을 앞에 두면 동률에서 rec이 남는다.)
+  const candidates = [rec, ctx].filter(Boolean);
   if (!candidates.length) return null;
   candidates.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   return candidates[0];

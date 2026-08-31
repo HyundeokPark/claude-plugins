@@ -680,11 +680,19 @@ function extractSpecGoal(specText) {
   if (goalMatch) {
     return '## Goal\n' + goalMatch[2].trim() + '\n';
   }
-  // Fallback: 제목/메타 + 앞부분. 사람이 읽을 분량으로만 자른다.
+  // Fallback: 앞부분을 사람이 읽을 분량으로만 자른다.
   // 📍 요약은 브리프 맨 위에서 이미 보여준다. 원문을 그대로 자르면 그 섹션과
   // `<!-- lake:auto-recap -->` 마커까지 딸려 들어와 같은 문장이 두 번 나온다.
   const lines = recaplib.stripRecapFromSpec(specText).split('\n');
-  const head = lines.slice(0, 10);
+  // 제목(`# ...`)과 메타 불릿(Project/Status/…)은 브리프 헤더 줄(=== 제목 [id] · status ===)과
+  // 중복이다 — 걷어내지 않으면 같은 정보가 두 벌 쏟아져 화면이 안 읽힌다.
+  let skip = 0;
+  while (skip < lines.length && (
+    lines[skip].trim() === '' ||
+    /^#\s/.test(lines[skip]) ||
+    /^-\s*\*{0,2}(Project|Status|Created|Updated|Tags)\*{0,2}\s*:/i.test(lines[skip])
+  )) skip++;
+  const head = lines.slice(skip, skip + 10);
   // 10줄에서 기계적으로 끊으므로 끝에 내용 없는 헤딩만 남거나(`## 배경`),
   // 섹션을 걷어낸 자리에 빈 줄이 겹쳐 남는다. 화면에 나가기 전에 정리한다.
   while (head.length && (head[head.length - 1].trim() === '' || /^#{1,6}\s/.test(head[head.length - 1]))) {
@@ -994,27 +1002,76 @@ function renderResumeMinimal(task, index, dir) {
 }
 
 function renderResumeSlim(task, index, dir) {
-  // 기본 뷰. recap(away_summary — LLM이 세션마다 새로 쓴 산문)만 보여준다.
-  // brief의 나머지 섹션은 낡은 plan.md/context.md의 기계 추출이라, 파일이 썩는 순간
-  // 화면 절반이 거짓말이 되고 그걸 메꾸는 ⚠ 경고·라벨로 출력만 길어졌다.
+  // 기본 뷰. 화면에 "요약 하나 + (있으면) 블로커 + 다음 하나"만 남긴다.
+  //
+  // 예전엔 spec.md의 📍 recap을 무조건 본문으로 썼다. 그 결과
+  // (1) 낡은 recap이 더 최신인 auto-context(현재/다음)를 가렸고,
+  // (2) SessionStart 브리핑은 "더 최신 것"을 고르므로 브리핑과 resume이 같은
+  //     태스크에 서로 다른 요약을 내놨다 — "비슷한듯 핀트가 다른 요약들"의 정체.
+  // 브리핑의 선택 규칙(lake-session-start pickState: 수동 `지금 상태` > 더 최신 것,
+  // 동률이면 context)을 그대로 따라 두 화면이 항상 같은 요약을 말하게 한다.
   const specRaw = readFileSafe(path.join(dir, 'spec.md')) || '';
-  const recap = extractSpecHumanRecap(specRaw);
-  if (!recap) return renderResumeBrief(task, index, dir); // 대체재가 없으면 옛 화면이 최선
+  const contextRaw = readFileSafe(path.join(dir, 'context.md')) || '';
+
+  const recapBody = extractSpecHumanRecap(specRaw);
+  const recapDate = recapBody ? (recapBody.match(/^\((\d{4}-\d{2}-\d{2})\)/) || [])[1] || null : null;
+  const rec = recapBody ? { text: recapBody, date: recapDate, kind: 'recap' } : null;
+
+  const st = ctxlib.currentState(contextRaw);
+  const ctx = st ? { text: st.text, date: st.date || null, kind: st.source === 'manual' ? 'manual' : 'auto' } : null;
+
+  let picked = null;
+  if (ctx && ctx.kind === 'manual') {
+    picked = ctx; // 사람이 손으로 쓴 상태가 정본
+  } else {
+    // 동률(같은 날)이면 recap — 대화 전체 기반이 도구 로그 요약보다 낫다 (pickState와 동일).
+    const candidates = [rec, ctx].filter(Boolean);
+    candidates.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    picked = candidates[0] || null;
+  }
+  if (!picked) return renderResumeBrief(task, index, dir); // 요약이 아예 없으면 옛 화면이 최선
 
   const days = Math.max(0, daysSince(task.updated));
   const ago = days === 0 ? 'today' : days === 1 ? '1d ago' : `${days}d ago`;
   let out = `=== ${task.title} [${task.id}] · ${task.status} · ${ago} ===\n\n`;
-  out += `${recap}\n`;
 
-  // recap에 "다음"이 이미 있으면 중복시키지 않는다. 없을 때만 plan.md의 최우선
-  // 미결 항목을 한 줄로 — 단 plan.md가 저널보다 낡았으면 그 항목 자체가 의심스러우니
-  // 아예 내지 않는다 (낡은 할 일을 '다음'으로 단정하는 사고가 이 뷰를 만든 이유다).
-  if (!/다음|next/i.test(recap) && !planlib.planStaleInfo(dir)) {
+  // 출처·기준일 라벨. 라벨이 없으면 자동 요약이 사람이 확정한 사실처럼 읽힌다.
+  const label = picked.kind === 'recap'
+    ? `📍 지난 세션 요약 (대화 기준${picked.date ? ' · ' + picked.date : ''})`
+    : picked.kind === 'manual'
+      ? `🧭 지금 상태 (context.md${picked.date ? ' · ' + picked.date : ''})`
+      : `🧭 지금 상태 (자동 요약${picked.date ? ' · ' + picked.date : ''})`;
+  // recap 본문은 `(YYYY-MM-DD) `로 시작한다 — 날짜를 라벨로 옮겼으니 본문에선 뗀다.
+  const body = picked.kind === 'recap'
+    ? picked.text.replace(/^\(\d{4}-\d{2}-\d{2}\)\s*/, '')
+    : picked.text;
+  out += `${label}\n${body}\n`;
+
+  // 요약이 실제 활동보다 이틀 이상 낡았으면 화면이 그 사실을 말한다.
+  // 침묵하면 낡은 요약이 '지금 상태'로 읽힌다. (resume 자체가 updated를 오늘로
+  // 밀어올리므로 하루 차이는 정상 오차 — 경고하지 않는다.)
+  if (picked.date) {
+    const lagDays = Math.round((new Date(task.updated) - new Date(picked.date)) / 86400000);
+    if (lagDays >= 2) {
+      out += `⚠ 요약 기준일 ${picked.date} — 이후 활동 ${lagDays}일치는 미반영 (저널: --view=full)\n`;
+    }
+  }
+
+  // 막힌 것은 요약과 별도 한 줄. 숨기면 새 세션이 막힌 항목을 착수 가능으로 읽는다.
+  const blocked = ctxlib.blockers(contextRaw);
+  if (blocked) out += `🚧 ${blocked.text}\n`;
+
+  // '다음'은 화면에 하나만. 고른 요약이 이미 방향을 말하고 있으면("다음/남은/해야" 류)
+  // plan.md 항목을 덧붙이지 않는다 — 핀트가 다른 '다음' 두 개가 이 뷰를 다시 망친다.
+  // (과거엔 /다음|next/만 검사해서 recap이 "남은 일은…"이라고 쓰면 못 잡았다.)
+  // plan.md가 저널보다 낡았으면 그 항목 자체가 의심스러우니 아예 내지 않는다.
+  const hasDirection = /다음|남은|이제 |해야|할 일|next/i.test(picked.text);
+  if (!hasDirection && !planlib.planStaleInfo(dir)) {
     const planRaw = readFileSafe(path.join(dir, 'plan.md')) || '';
     const top = extractPlanUnresolvedTop(planRaw, 1);
     if (top.length > 0) {
-      const body = top[0].replace(/^\s*- \[ \]\s*/, '').replace(/^★\d*\s*/, '').trim();
-      if (body) out += `\n다음: ${body}\n`;
+      const planNext = top[0].replace(/^\s*- \[ \]\s*/, '').replace(/^★\d*\s*/, '').trim();
+      if (planNext) out += `\n다음 (plan.md): ${planNext}\n`;
     }
   }
 

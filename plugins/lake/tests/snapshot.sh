@@ -368,18 +368,20 @@ grep -q '삼켜지면 안 되는 메타' $TMP/rb.out && ok=0
 grep -q '목표 한 줄' $TMP/rb.out || ok=0            # Goal은 정상 추출
 if [ "$ok" = 1 ]; then pass "AC-Recap-Section-Bounded"; else fail "AC-Recap-Section-Bounded"; fi
 
-echo "=== AC-Slim-Default (기본 뷰 = 헤더+recap 산문만, 기계 추출 섹션 없음) ==="
-# recap이 있으면 slim: 헤딩 없는 recap 산문 + footer. brief의 Goal/상태/▶ 섹션은
-# 낡은 파일의 기계 추출이라 기본 화면에서 뺀다 (v1.13.0 사용자 결정).
+echo "=== AC-Slim-Default (기본 뷰 = 요약 하나 + 다음 하나, 기계 추출 섹션 없음) ==="
+# slim: 출처 라벨이 붙은 요약 하나 + (요약에 방향이 없을 때만) plan '다음' 한 줄.
+# 브리핑(pickState)과 같은 규칙으로 더 최신 요약을 고른다 — 화면마다 다른 요약 금지
+# (v1.15.0). brief의 Goal/상태/▶ 섹션은 낡은 파일의 기계 추출이라 기본 화면에서 뺀다.
 $CLI resume recap-render > $TMP/sd.out
 ok=1
 grep -q '뭘 하던 중이고 여기까지 됐습니다' $TMP/sd.out || ok=0   # recap 산문 노출
-grep -q '## 📍' $TMP/sd.out && ok=0                              # 헤딩 없이 산문만
+grep -q '📍 지난 세션 요약' $TMP/sd.out || ok=0                  # 출처·기준일 라벨
+grep -q '## 📍' $TMP/sd.out && ok=0                              # 마크다운 헤딩 없이
 grep -q '📌' $TMP/sd.out && ok=0                                 # Goal 섹션 미출력
 grep -q '이제 할 차례' $TMP/sd.out && ok=0                        # plan 추출 섹션 미출력
-grep -q '^다음:' $TMP/sd.out && ok=0                             # recap에 '다음'이 있으니 중복 금지
+grep -q '^다음 (plan.md):' $TMP/sd.out && ok=0                   # recap에 '다음'이 있으니 중복 금지
 grep -q 'view=brief' $TMP/sd.out || ok=0                         # 상세로 가는 길 안내
-# recap에 '다음'이 없으면 plan 최우선(★) 1건을 '다음:' 한 줄로
+# recap에 방향("다음/남은/해야" 류)이 없으면 plan 최우선(★) 1건을 한 줄로
 make_plan_task slim-next '# Plan
 
 ## Checklist
@@ -389,16 +391,62 @@ make_plan_task slim-next '# Plan
 printf -- '# slim-next\n\n## 📍 사람용 요약\n<!-- lake:auto-recap -->\n(2026-08-14) 조사만 끝냈습니다.\n\n## Goal\nG.\n' \
   > "$PLAN_LAKE/inprogress/slim-next/spec.md"
 $CLI resume slim-next > $TMP/sd2.out
-grep -q '^다음: 급한 것' $TMP/sd2.out || ok=0
-# plan.md가 저널보다 낡으면 '다음:' 자체를 내지 않는다 (낡은 할 일 단정 금지)
+grep -q '^다음 (plan.md): 급한 것' $TMP/sd2.out || ok=0
+# plan.md가 저널보다 낡으면 '다음' 자체를 내지 않는다 (낡은 할 일 단정 금지)
 printf -- '# 2026-08-13\n- 급한 것은 폐기함.\n' > "$PLAN_LAKE/inprogress/slim-next/journal/2026-08-13.md"
 touch -t 202608110900 "$PLAN_LAKE/inprogress/slim-next/plan.md"
 $CLI resume slim-next > $TMP/sd3.out
-grep -q '^다음:' $TMP/sd3.out && ok=0
+grep -q '^다음 (plan.md):' $TMP/sd3.out && ok=0
 # recap이 없는 태스크는 기존 brief로 폴백 (대체재가 없다)
 $CLI resume plan-legacy > $TMP/sd4.out
 grep -q '이제 할 차례' $TMP/sd4.out || ok=0
 if [ "$ok" = 1 ]; then pass "AC-Slim-Default"; else fail "AC-Slim-Default"; fi
+
+echo "=== AC-Slim-Freshest (auto-context가 recap보다 최신이면 그쪽이 본문 — 브리핑과 동일 규칙) ==="
+# 실사고: 브리핑은 최신 auto-context를, resume은 낡은 recap을 보여줘 같은 태스크에
+# "비슷한듯 핀트가 다른 요약" 두 벌이 떴다 (v1.15.0에서 선택 규칙 통일).
+make_plan_task slim-fresh '# Plan
+
+## Checklist
+- [ ] 남은 것
+'
+printf -- '# slim-fresh\n\n## 📍 사람용 요약\n<!-- lake:auto-recap -->\n(2026-08-10) 옛 recap 문장입니다.\n' \
+  > "$PLAN_LAKE/inprogress/slim-fresh/spec.md"
+printf -- '# Context\n\n<!-- lake:auto-context:start -->\n## 자동 상태 (compactor, 2026-08-30)\n현재: 새 상태 문장.\n다음: 새 다음 항목.\n<!-- lake:auto-context:end -->\n' \
+  > "$PLAN_LAKE/inprogress/slim-fresh/context.md"
+$CLI resume slim-fresh > $TMP/sf.out
+ok=1
+grep -q '새 상태 문장' $TMP/sf.out || ok=0                        # 더 최신인 context가 본문
+grep -q '옛 recap 문장' $TMP/sf.out && ok=0                       # 낡은 recap은 안 나온다
+grep -q '지금 상태 (자동 요약 · 2026-08-30)' $TMP/sf.out || ok=0  # 출처·기준일 라벨
+grep -q '^다음 (plan.md):' $TMP/sf.out && ok=0                    # 상태에 이미 '다음:'이 있다
+if [ "$ok" = 1 ]; then pass "AC-Slim-Freshest"; else fail "AC-Slim-Freshest"; fi
+
+echo "=== AC-Slim-Stale-Warn (요약이 활동보다 이틀 이상 낡으면 화면이 말한다) ==="
+make_plan_task slim-stale '# Plan
+
+## Checklist
+- [x] 끝난 일
+'
+printf -- '# slim-stale\n\n## 📍 사람용 요약\n<!-- lake:auto-recap -->\n(2026-08-20) 조사하던 중이었고 후보를 좁혔습니다. 다음은 재현입니다.\n' \
+  > "$PLAN_LAKE/inprogress/slim-stale/spec.md"
+node -e "
+const fs=require('fs');const p='$PLAN_LAKE/index.json';
+const idx=JSON.parse(fs.readFileSync(p,'utf8'));
+idx.find(t=>t.slug==='slim-stale').updated='2026-09-01';
+fs.writeFileSync(p,JSON.stringify(idx,null,2));"
+$CLI resume slim-stale > $TMP/sw.out
+ok=1
+grep -q '⚠ 요약 기준일 2026-08-20 — 이후 활동 12일치는 미반영' $TMP/sw.out || ok=0
+# 하루 차이는 정상 오차 (resume이 updated를 오늘로 밀어올린다) — 경고 금지
+node -e "
+const fs=require('fs');const p='$PLAN_LAKE/index.json';
+const idx=JSON.parse(fs.readFileSync(p,'utf8'));
+idx.find(t=>t.slug==='slim-stale').updated='2026-08-21';
+fs.writeFileSync(p,JSON.stringify(idx,null,2));"
+$CLI resume slim-stale > $TMP/sw2.out
+grep -q '⚠ 요약 기준일' $TMP/sw2.out && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Slim-Stale-Warn"; else fail "AC-Slim-Stale-Warn"; fi
 
 echo "=== AC-Plan-Priority-Star (★N 마커가 파일 순서를 이긴다) ==="
 # 실사고: plan.md는 시간순으로 덧붙는 문서라 "이번 주 최우선"이 6번째 줄에 깔렸고,

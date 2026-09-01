@@ -206,7 +206,7 @@ function relDate(ymd) {
 
 // --- Version & Flag Contract ---
 
-const LAKE_CLI_VERSION = '1.13.0';
+const LAKE_CLI_VERSION = '1.16.0';
 
 const VIEW_DEFAULTS = {
   // slim: 헤더 + recap 산문 + `다음:` 한 줄. brief의 기계 추출 섹션(Goal/상태/✅/▶/Blockers)은

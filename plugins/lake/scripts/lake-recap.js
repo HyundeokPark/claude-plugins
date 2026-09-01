@@ -203,7 +203,10 @@ function writeRecap(taskDir, text, dateStr, source) {
   const clean = String(text || '').replace(UI_HINT_RE, '').replace(/\s*\n\s*/g, ' ').trim();
   if (!clean) return 'manual-kept';
 
-  const src = source === 'away_summary' ? 'away_summary' : 'haiku';
+  // 출처 랭크: 대화 전체를 본 것(away_summary 수확, replay 재현) = 2,
+  // 도구 로그만 본 것(haiku) = 1. 표기 없는 옛 마커는 haiku로 간주.
+  const RANK = { away_summary: 2, replay: 2, haiku: 1 };
+  const src = RANK[source] ? source : 'haiku';
   const marker = `<!-- lake:auto-recap source=${src} -->`;
   const section = `${RECAP_HEADING}\n${marker}\n(${dateStr}) ${clean}\n`;
   const sec = findRecapSection(body);
@@ -213,9 +216,9 @@ function writeRecap(taskDir, text, dateStr, source) {
     const existing = body.slice(sec.start, sec.end);
     const m = existing.match(AUTO_MARKER_RE);
     if (!m) return 'manual-kept';
-    // 출처 강등 금지: 이미 away_summary가 있는데 haiku로 덮지 않는다.
-    // (출처 표기가 없는 옛 마커는 haiku로 간주 — 덮여도 손해가 아니다)
-    if (m[1] === 'away_summary' && src !== 'away_summary') return 'kept-better';
+    // 출처 강등 금지: 대화 기반 요약을 도구 로그 기반으로 덮지 않는다.
+    // 같은 급이면 나중 것이 이긴다 — 낡은 요약이 화면에 동결되는 것을 막는다.
+    if ((RANK[m[1]] || 1) > (RANK[src] || 1)) return 'kept-better';
     fs.writeFileSync(specPath, body.slice(0, sec.start) + section + body.slice(sec.end), 'utf-8');
     return 'written';
   }

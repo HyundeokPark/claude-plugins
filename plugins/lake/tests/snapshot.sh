@@ -621,14 +621,20 @@ const b=r.writeRecap(d,'도구 로그로 만든 요약입니다.','2026-08-21','
 const body=fs.readFileSync(path.join(d,'spec.md'),'utf-8');
 const c=r.writeRecap(d,'새 대화 기반 요약입니다.','2026-08-21','away_summary');
 const body2=fs.readFileSync(path.join(d,'spec.md'),'utf-8');
+// replay(대화 재현)는 away_summary와 같은 급 — 서로 덮을 수 있다 (동결 방지)
+const e=r.writeRecap(d,'재현으로 만든 요약입니다.','2026-08-22','replay');
+const f=r.writeRecap(d,'또 도구 로그 요약입니다.','2026-08-23','haiku');
+const body3=fs.readFileSync(path.join(d,'spec.md'),'utf-8');
 console.log([a,b,c,
   body.includes('진짜 대화 기반')?'kept':'LOST',
   body.includes('도구 로그로')?'OVERWRITTEN':'blocked',
-  body2.includes('새 대화 기반')?'upgraded':'STUCK'].join('|'));
+  body2.includes('새 대화 기반')?'upgraded':'STUCK',
+  e,f,
+  body3.includes('재현으로 만든')?'replay-live':'REPLAY-LOST'].join('|'));
 fs.rmSync(d,{recursive:true,force:true});
 ")
 echo "  → $RD"
-[ "$RD" = "created|kept-better|written|kept|blocked|upgraded" ] || ok=0
+[ "$RD" = "created|kept-better|written|kept|blocked|upgraded|written|kept-better|replay-live" ] || ok=0
 if [ "$ok" = 1 ]; then pass "AC-Recap-No-Downgrade"; else fail "AC-Recap-No-Downgrade"; fi
 
 echo '=== AC-Version-Manifests-Agree (버전이 적힌 모든 자리가 일치) ==='

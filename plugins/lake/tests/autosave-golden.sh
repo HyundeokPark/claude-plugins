@@ -274,7 +274,9 @@ ok=1
 grep -q '창 밖의 낡은 요약' "$LAKE/inprogress/recap-w/spec.md" 2>/dev/null && ok=0
 if [ "$ok" = 1 ]; then pass "AC-Recap-Window"; else fail "AC-Recap-Window"; fi
 
-echo "=== AC-Recap-Fallback (away_summary 없으면 haiku RECAP 블록으로 대체) ==="
+echo "=== AC-Recap-Fallback (away_summary 없으면 하네스 방식 재현(replay)으로 생성) ==="
+# haiku RECAP 폴백은 제거됨 (v1.16.0) — 도구 로그 요약은 대화 기반 요약보다 항상 못했다.
+# 대신 claude -p --resume으로 대화 전체에 하네스 프롬프트를 재현한다 (테스트는 대역).
 STUB2="$TMP/stub2.js"
 cat > "$STUB2" <<'EOF'
 process.stdin.resume();
@@ -283,12 +285,27 @@ process.stdin.on('end', () => {
 });
 process.stdin.on('data', () => {});
 EOF
+RSTUB="$TMP/rstub.js"
+cat > "$RSTUB" <<'EOF'
+process.stdin.resume();
+process.stdin.on('end', () => {
+  console.log('재현 요약입니다. 여기까지 됐고 다음은 저것입니다.');
+});
+process.stdin.on('data', () => {});
+EOF
 make_task recap-f; set_marker recapf-sess recap-f
 spool_events recapf-sess   # 트랜스크립트를 만들지 않는다 → 수확 실패
 ok=1
-LAKE_SUMMARIZER_CMD="node $STUB2" HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/recapf-sess.jsonl"
-grep -q '폴백 요약입니다' "$LAKE/inprogress/recap-f/spec.md" 2>/dev/null || ok=0
-grep -q 'recap-.*(haiku)' "$SPOOL/compactor.log" 2>/dev/null || ok=0
+LAKE_SUMMARIZER_CMD="node $STUB2" LAKE_REPLAY_CMD="node $RSTUB" HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/recapf-sess.jsonl"
+grep -q '재현 요약입니다' "$LAKE/inprogress/recap-f/spec.md" 2>/dev/null || ok=0
+grep -q '폴백 요약입니다' "$LAKE/inprogress/recap-f/spec.md" 2>/dev/null && ok=0   # haiku RECAP은 이제 안 쓴다
+grep -q 'recap-.*(replay)' "$SPOOL/compactor.log" 2>/dev/null || ok=0
+# replay까지 실패하면 recap을 비워둔다 — 도구 로그 요약으로 대체하지 않는다
+make_task recap-f2; set_marker recapf2-sess recap-f2
+spool_events recapf2-sess
+LAKE_SUMMARIZER_CMD="node $STUB2" LAKE_REPLAY_CMD="false" HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/recapf2-sess.jsonl"
+grep -q '## 📍' "$LAKE/inprogress/recap-f2/spec.md" 2>/dev/null && ok=0
+grep -q 'recap-none: recap-f2 (replay 실패)' "$SPOOL/compactor.log" 2>/dev/null || ok=0
 if [ "$ok" = 1 ]; then pass "AC-Recap-Fallback"; else fail "AC-Recap-Fallback"; fi
 
 echo "=== AC-Recap-Manual-Kept (사람이 쓴 요약은 덮지 않는다) ==="

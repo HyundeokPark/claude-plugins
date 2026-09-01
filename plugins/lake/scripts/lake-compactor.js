@@ -77,13 +77,14 @@ function buildDebugBody(dbg) {
   parts.push(`## 1. away_summary 수확 판단\n${renderHarvestDebug(dbg.harvest)}`);
 
   const verdictLines = [
+    `- replay 시도: ${dbg.replayTried ? '예 (claude -p --resume 재현)' : '아니오'}`,
     `- 최종 소스: ${dbg.source || '(없음)'}`,
     `- writeRecap 판정: ${dbg.writeResult || '(호출 안 됨)'}`,
     `- 기존 spec 요약(판정 전): ${dbg.existingRecap || '(없음)'}`,
     `- 최종 후보 텍스트: ${dbg.finalText || '(없음)'}`,
   ];
   if (dbg.writeResult === 'kept-better') {
-    verdictLines.push('- ⚠ 버려짐: 위 후보 텍스트(haiku)가 기존 away_summary 요약에 밀려 폐기됨.');
+    verdictLines.push(`- ⚠ 버려짐: 위 후보 텍스트(${dbg.source})가 기존 상위 출처 요약에 밀려 폐기됨.`);
     verdictLines.push('  후보가 더 최신 상태를 담고 있다면 이 규칙(출처 강등 금지)이 손해를 낸 사례다.');
   }
   if (dbg.writeResult === 'manual-kept') {
@@ -186,16 +187,14 @@ function renderEvents(events) {
 }
 
 function buildPrompt(task, events) {
+  // RECAP은 여기서 만들지 않는다 — 도구 로그만 보고 쓴 사람용 요약은 대화 기반
+  // 요약(away_summary 수확 / replayRecap)보다 항상 못했다. journal/context만 요청한다.
   return `아래는 Claude Code 세션의 활동 로그다. lake 태스크 "${task.slug}"에 기록할 두 산출물을 만들어라.
 
 1) JOURNAL — 요약 금지, 정제만 한다. 파일 읽기·검색·조회 같은 탐색 노이즈는 버리고,
    시간순으로 다음만 bullet(-)로 남긴다: 시도한 것, 결과(성공/실패와 에러 내용),
    내린 결정과 그 근거, 새로 확정한 사실. 5~15줄. 구체적 파일명/명령/값을 보존할 것.
 2) CONTEXT — 현재 상태 스냅숏. "현재:", "다음:", "블로커:" 세 줄 형식, 각 1~2문장.
-3) RECAP — 사람이 읽는 요약. 2~3문장, 120~180자. 라벨·불릿·마크다운 금지, 줄바꿈 없이.
-   "무엇을 하던 중인지 → 어디까지 됐는지 → 다음은 무엇인지" 순서로 자연스러운 한국어 서술.
-   예: "HeyPoll 시크릿을 금고로 옮기는 작업이고, 로컬 검증은 backend·scheduler 모두 통과했습니다.
-   다음은 콘솔에서 금고를 만들고 값 20개를 넣는 것입니다."
 
 출력 형식을 정확히 지켜라 (다른 텍스트 금지):
 ===JOURNAL===
@@ -204,11 +203,39 @@ function buildPrompt(task, events) {
 현재: ...
 다음: ...
 블로커: ...
-===RECAP===
-...
 
 --- 활동 로그 ---
 ${renderEvents(events)}`;
+}
+
+// Claude Code 본체가 away_summary(터미널의 "※ recap:" 줄)를 만들 때 쓰는 프롬프트 원문
+// (cli 바이너리에서 추출, 2026-09). 같은 지시문을 같은 대화 위에 얹어야 같은 급의
+// 요약이 나온다 — 문구를 임의로 다듬지 말 것.
+const AWAY_PROMPT = 'The user stepped away and is coming back. Recap in under 40 words, 1-2 plain sentences, no markdown. Lead with the overall goal and current task, then the one next action. Skip root-cause narrative, fix internals, secondary to-dos, and em-dash tangents.';
+
+// away_summary가 없는 세션(자리를 안 비웠으면 안 생긴다)의 대체 생성.
+// `claude -p --resume`으로 그 세션의 대화 전체를 물고 하네스와 동일한 프롬프트를
+// 실행한다 — spool(도구 로그)로 만드는 요약과 달리 대화 기반이라 같은 급(rank 2)이다.
+// 비용: 세션당 haiku 1회(대화 전체 입력). 실패하면 recap 없이 두는 게 정직하다.
+function replayRecap(sessionId, cwdHint) {
+  const custom = process.env.LAKE_REPLAY_CMD; // 테스트 대역
+  const opts = {
+    encoding: 'utf-8',
+    timeout: 300000,
+    maxBuffer: 4 * 1024 * 1024,
+    env: { ...process.env, LAKE_COMPACTOR: '1' },
+  };
+  try {
+    if (custom) return execSync(custom, { ...opts, input: AWAY_PROMPT }).trim() || null;
+    // --resume은 cwd가 속한 프로젝트 디렉터리에서 세션을 찾는다 — 원래 cwd가 필수다.
+    if (!cwdHint || !fs.existsSync(cwdHint)) return null;
+    const out = execFileSync('claude',
+      ['-p', '--resume', sessionId, '--fork-session', '--model', 'haiku', AWAY_PROMPT],
+      { ...opts, cwd: cwdHint });
+    return out.trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 function summarize(prompt) {
@@ -347,7 +374,7 @@ function main() {
       eventCount: seg.events.length,
       midSession,
       prompt: null, raw: null, parseOk: null,
-      harvest: null, source: null, finalText: null,
+      harvest: null, replayTried: false, source: null, finalText: null,
       existingRecap: null, writeResult: null, error: null,
     };
     try {
@@ -365,11 +392,20 @@ function main() {
 
       // 사람용 요약(📍): Claude Code가 이미 쓴 away_summary를 1순위로 수확한다.
       // 대화 전체를 보고 쓴 것이라 spool(도구 호출·프롬프트만)로 만든 것보다 정확하다.
-      // 없는 세션(자리를 비우지 않았으면 안 생긴다)은 haiku RECAP 블록으로 대체.
+      // 없는 세션은 하네스 방식 재현(replayRecap)으로 같은 급을 새로 만든다.
       try {
         dbg.harvest = recap.harvestDetailed(sessionId, seg.events, recap.eventsCwd(seg.events));
         const harvested = dbg.harvest.picked;
-        const text = harvested || blocks.recap;
+        let text = harvested;
+        let source = 'away_summary';
+        // replay는 대화 "전체"의 요약이므로 세션 마지막 태스크 구간에만 쓴다 —
+        // 앞 구간(다른 태스크)에 넣으면 남의 상태가 적힌다. 중간 플러시는 건너뛴다:
+        // 세션이 끝나야 대화가 완결되고, 같은 대화로 여러 번 돌 이유도 없다.
+        if (!text && !midSession && seg === segments[segments.length - 1]) {
+          dbg.replayTried = true;
+          text = replayRecap(sessionId, recap.eventsCwd(seg.events));
+          if (text) source = 'replay';
+        }
         dbg.finalText = text;
         // writeRecap이 기존 요약을 지키면(kept-better/manual-kept) 후보가 버려진다 —
         // 뭐가 버려졌는지 대조할 수 있게 판정 전의 기존 섹션을 떠 둔다.
@@ -379,13 +415,12 @@ function main() {
           dbg.existingRecap = sec ? spec.slice(sec.start, sec.end).trim() : null;
         } catch { /* spec 없음 — writeRecap이 no-spec으로 알려준다 */ }
         if (text) {
-          const source = harvested ? 'away_summary' : 'haiku';
           dbg.source = source;
           const result = recap.writeRecap(taskDir, text, new Date().toISOString().slice(0, 10), source);
           dbg.writeResult = result;
           log(`recap-${result}: ${seg.task.slug} (${source})`);
         } else {
-          log(`recap-none: ${seg.task.slug}`);
+          log(`recap-none: ${seg.task.slug}${dbg.replayTried ? ' (replay 실패)' : ''}`);
         }
       } catch (e) {
         // 사람용 요약 실패는 journal/context 저장을 되돌릴 이유가 못 된다

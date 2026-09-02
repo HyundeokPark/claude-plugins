@@ -129,8 +129,7 @@ Templates → see `references/templates.md`. `--parent` flag → see `references
    **slim이 나왔으면 정상이다. brief가 안 나왔다고 다시 호출하지 말 것.**
 3. `--view=brief`(Goal/여기까지/이제 할 차례/대기중/Blockers/Context)는 사용자가 "자세히"를 원하거나 그 task 작업을 이어서 요청할 때(구현/디버그/수정 등)만 호출하고, 그 컨텍스트로 곧바로 시작한다 — full을 미리 호출하지 말 것.
 4. **slim/brief 최상단에 `⚠ plan.md가 저널보다 낡음` 또는 `⚠ 요약 기준일 … 미반영`이 뜨면 할 일 목록을 그대로 보고하지 말 것.**
-   `plan-check <hash>`를 먼저 돌려 후보를 판정한 뒤 이어간다. `⏳ 대기중`은 착수 가능한
-   일이 아니고, 폐기(`[-]`)는 brief에서 숨겨진다(`--view=full`에서 확인).
+   `plan-check <hash>`를 먼저 돌려 후보를 판정한 뒤 이어간다. `⏳ 대기중`은 착수 가능한 일이 아니고, 폐기(`[-]`)는 brief에서 숨겨진다(`--view=full`에서 확인).
    **`… 외 N건`이 붙어 있으면 "이게 전부"라고 보고하지 말 것** — 감춰진 N건이 있다.
 5. 작업 중 journal/history 정보가 *명시적으로* 필요할 때만 `--view=full` 호출.
 6. 사용자가 명시적으로 다른 view를 요청하면(`brief`, `summary`, `recap`, `minimal`, `files`) 그 플래그로 호출.

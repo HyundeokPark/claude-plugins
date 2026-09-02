@@ -122,18 +122,19 @@ Templates → see `references/templates.md`. `--parent` flag → see `references
 
 ### `/lake resume [name-or-hash]`
 
-**Bash 1회로 끝낸다. 기본 `--view=brief`(Goal / 여기까지 / 이제 할 차례 / 대기중 / Blockers / Context).**
+**Bash 1회로 끝낸다. 기본 `--view=slim`(📍 지난 세션 요약 1개 + 다음 할 일 1개 + Blockers). recap이 없으면 brief로 자동 폴백.**
 
 1. No arg: run `list --view=compressed`, AskUserQuestion to select
-2. With arg: `lake-cli.js resume <arg>` → Echo captured stdout verbatim inside a fenced code block. Brief이 기본이라 view 플래그 없이 호출.
-3. Brief은 "AI도 바로 작업 진행 가능하게" 설계됐다. 사용자가 그 task의 작업을 이어서 요청하면(구현/디버그/수정/이어서 등) brief의 컨텍스트로 곧바로 시작한다 — full을 미리 호출하지 말 것.
-4. **brief 최상단에 `⚠ plan.md가 저널보다 낡음`이 뜨면 할 일 목록을 그대로 보고하지 말 것.**
+2. With arg: `lake-cli.js resume <arg>` → Echo captured stdout verbatim inside a fenced code block. slim이 기본이라 view 플래그 없이 호출.
+   **slim이 나왔으면 정상이다. brief가 안 나왔다고 다시 호출하지 말 것** — 사용자가 "자세히"/"할 일 목록"을 원하거나 작업을 이어가야 할 때만 `--view=brief`로 확대한다.
+3. brief(Goal / 여기까지 / 이제 할 차례 / 대기중 / Blockers / Context)는 "AI도 바로 작업 진행 가능하게" 설계됐다. 사용자가 그 task의 작업을 이어서 요청하면(구현/디버그/수정/이어서 등) brief의 컨텍스트로 곧바로 시작한다 — full을 미리 호출하지 말 것.
+4. **slim/brief 최상단에 `⚠ plan.md가 저널보다 낡음` 또는 `⚠ 요약 기준일 … 미반영`이 뜨면 할 일 목록을 그대로 보고하지 말 것.**
    `plan-check <hash>`를 먼저 돌려 후보를 판정한 뒤 이어간다. `⏳ 대기중`은 착수 가능한
    일이 아니고, 폐기(`[-]`)는 brief에서 숨겨진다(`--view=full`에서 확인).
    **`… 외 N건`이 붙어 있으면 "이게 전부"라고 보고하지 말 것** — 감춰진 N건이 있다.
 5. 작업 중 journal/history 정보가 *명시적으로* 필요할 때만 `--view=full` 호출.
-6. 사용자가 명시적으로 다른 view를 요청하면(`summary`, `recap`, `minimal`, `files`) 그 플래그로 호출.
-7. Update spec.md Updated timestamp + `lake-cli.js upsert`
+6. 사용자가 명시적으로 다른 view를 요청하면(`brief`, `summary`, `recap`, `minimal`, `files`) 그 플래그로 호출.
+7. Update spec.md Updated timestamp + `lake-cli.js upsert` — upsert JSON에는 **`slug`를 반드시 포함**한다(기존 항목 매칭 키가 slug 하나다). `id`만 넘기면 신규로 취급되어 해시 계산에서 `ERR_INVALID_ARG_TYPE`로 죽는다. slug는 `find <hash>`로 얻는다.
 
 ### `/lake done [name-or-hash]`
 

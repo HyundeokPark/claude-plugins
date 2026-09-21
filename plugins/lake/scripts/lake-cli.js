@@ -206,7 +206,7 @@ function relDate(ymd) {
 
 // --- Version & Flag Contract ---
 
-const LAKE_CLI_VERSION = '1.16.2';
+const LAKE_CLI_VERSION = '1.16.3';
 
 const VIEW_DEFAULTS = {
   // slim: 헤더 + recap 산문 + `다음:` 한 줄. brief의 기계 추출 섹션(Goal/상태/✅/▶/Blockers)은
@@ -363,14 +363,17 @@ function renderListV0ByteIdentical(index) {
     .sort((a, b) => (b.updated || '').localeCompare(a.updated || ''))
     .slice(0, 3);
 
-  const topLevel = inprog.filter(t => !t.parent);
+  // Orphans (parent not in this in-progress list — done/archived/filtered out) are shown
+  // as top-level rows with ⚠, interleaved by date. They used to be appended at the very
+  // bottom regardless of date, which hid recently-updated tasks under dozens of stale rows.
+  const parentIds = new Set(inprog.filter(t => !t.parent).map(t => t.id));
+  const isOrphan = t => !!t.parent && !parentIds.has(t.parent);
+  const topLevel = inprog.filter(t => !t.parent || isOrphan(t)); // keeps inprog's date order
   const childMap = {};
-  inprog.filter(t => t.parent).forEach(t => {
+  inprog.filter(t => t.parent && !isOrphan(t)).forEach(t => {
     if (!childMap[t.parent]) childMap[t.parent] = [];
     childMap[t.parent].push(t);
   });
-  const parentIds = new Set(topLevel.map(t => t.id));
-  const orphans = inprog.filter(t => t.parent && !parentIds.has(t.parent));
 
   // Build flat rows with all columns: [num, hash, title, project, date]
   let pos = 0;
@@ -378,17 +381,13 @@ function renderListV0ByteIdentical(index) {
   topLevel.forEach(t => {
     pos++;
     const tagStr = t.tags && t.tags.length ? '  ' + t.tags.map(x => '#' + x).join(' ') : '';
-    rows.push([String(pos), t.id, t.title + tagStr, t.project, t.updated]);
+    const mark = isOrphan(t) ? ' ⚠' : '';
+    rows.push([String(pos), t.id, t.title + tagStr + mark, t.project, t.updated]);
     const children = (childMap[t.id] || []).sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
     children.forEach(c => {
       const ctagStr = c.tags && c.tags.length ? '  ' + c.tags.map(x => '#' + x).join(' ') : '';
       rows.push(['', c.id, '  └ ' + c.title + ctagStr, c.project, c.updated]);
     });
-  });
-  orphans.forEach(t => {
-    pos++;
-    const tagStr = t.tags && t.tags.length ? '  ' + t.tags.map(x => '#' + x).join(' ') : '';
-    rows.push([String(pos), t.id, t.title + tagStr + ' ⚠', t.project, t.updated]);
   });
 
   const doneRows = done.map(t => ['✓', t.id, t.title, t.project, t.updated]);
@@ -455,10 +454,14 @@ function renderListCompressed(index, opts = {}) {
   let out = '';
   const inprogAll = index.filter(t => t.status === 'inprogress')
     .sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
-  const topLevel = inprogAll.filter(t => !t.parent);
+  // Same orphan rule as the table view: a child whose parent is not in-progress is promoted
+  // to top level (date order, ⚠) instead of being silently counted as a hidden child.
+  const parentIds = new Set(inprogAll.filter(t => !t.parent).map(t => t.id));
+  const isOrphan = t => !!t.parent && !parentIds.has(t.parent);
+  const topLevel = inprogAll.filter(t => !t.parent || isOrphan(t));
   const childCountByParent = {};
   let hiddenChildren = 0;
-  inprogAll.filter(t => t.parent).forEach(t => {
+  inprogAll.filter(t => t.parent && !isOrphan(t)).forEach(t => {
     childCountByParent[t.parent] = (childCountByParent[t.parent] || 0) + 1;
     hiddenChildren++;
   });
@@ -476,7 +479,8 @@ function renderListCompressed(index, opts = {}) {
     const stale = daysSince(t.updated) >= 7 ? ' (stale)' : '';
     const tags = t.tags ? ` ${t.tags.map(x => '#' + x).join(' ')}` : '';
     const kids = childCountByParent[t.id] ? ` (+${childCountByParent[t.id]} children)` : '';
-    out += `  ${num}. [${t.id}] ${t.title} (${t.project}) — Updated ${t.updated}${stale}${tags}${kids}\n`;
+    const mark = isOrphan(t) ? ' ⚠' : '';
+    out += `  ${num}. [${t.id}] ${t.title}${mark} (${t.project}) — Updated ${t.updated}${stale}${tags}${kids}\n`;
     num++;
   });
 

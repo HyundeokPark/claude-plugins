@@ -26,7 +26,8 @@ const AUTO_MARKER = '<!-- lake:auto-recap -->';
 // 출처까지 적는 마커. away_summary(대화 전체를 본 것)가 haiku(도구 로그만 본 것)보다
 // 항상 낫다. 중간 플러시가 잦아지면서, 좋은 요약을 나중 haiku 요약이 덮는 사고가
 // 생길 수 있다 — 출처를 남겨야 그걸 막을 수 있다.
-const AUTO_MARKER_RE = /<!--\s*lake:auto-recap(?:\s+source=(\w+))?\s*-->/;
+// session= 은 요약을 만든 세션. 다른 세션 요약이 섞였을 때 출처를 추적할 수 있게 남긴다.
+const AUTO_MARKER_RE = /<!--\s*lake:auto-recap(?:\s+source=(\w+))?(?:\s+session=([\w-]+))?\s*-->/;
 
 // Claude Code가 요약 끝에 붙이는 UI 안내문 — lake에 남길 내용이 아니다.
 const UI_HINT_RE = /\s*\(disable recaps in \/config\)\s*$/;
@@ -191,7 +192,7 @@ function stripRecapFromSpec(specText) {
  *
  * @returns 'written' | 'created' | 'manual-kept' | 'no-spec'
  */
-function writeRecap(taskDir, text, dateStr, source) {
+function writeRecap(taskDir, text, dateStr, source, sessionId) {
   const specPath = path.join(taskDir, 'spec.md');
   let body;
   try {
@@ -207,7 +208,8 @@ function writeRecap(taskDir, text, dateStr, source) {
   // 도구 로그만 본 것(haiku) = 1. 표기 없는 옛 마커는 haiku로 간주.
   const RANK = { away_summary: 2, replay: 2, haiku: 1 };
   const src = RANK[source] ? source : 'haiku';
-  const marker = `<!-- lake:auto-recap source=${src} -->`;
+  const sid = String(sessionId || '').replace(/[^\w-]/g, '').slice(0, 8);
+  const marker = `<!-- lake:auto-recap source=${src}${sid ? ' session=' + sid : ''} -->`;
   const section = `${RECAP_HEADING}\n${marker}\n(${dateStr}) ${clean}\n`;
   const sec = findRecapSection(body);
 
@@ -232,7 +234,116 @@ function writeRecap(taskDir, text, dateStr, source) {
   return 'created';
 }
 
+/**
+ * spec.md 📍 섹션 마커에 적힌 출처 세션 id(앞 8자). 없으면 null.
+ */
+function recapSessionFromSpec(specText) {
+  const sec = findRecapSection(specText);
+  if (!sec) return null;
+  const m = String(specText).slice(sec.start, sec.end).match(AUTO_MARKER_RE);
+  return (m && m[2]) || null;
+}
+
+// --- 티켓 키로 '다른 작업' 판별 ---
+// 세션의 cwd·gitBranch는 혼입 판별에 못 쓴다: 2026-10-07 83b08b 사고에서 두 세션 모두
+// cwd=저장소 루트, branch=HEAD 였고 워크트리 경로는 Bash 명령 안(`cd …-WP-11349`)에만 있었다.
+// 그래서 활동 내용에 가장 많이 나온 같은 계열 티켓 키를 태스크 키와 비교한다.
+// 키 앞뒤는 영숫자만 아니면 된다 — `\b`는 `feature/WP-11349_fix`의 `_` 앞에서 끊기지 않아 놓친다.
+const KEY_SRC = '(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9]{1,9})-(\\d{3,})(?!\\d)';
+
+/** text 안의 티켓 키 목록(대문자 정규화, 등장 순) */
+function ticketKeys(text) {
+  return [...String(text || '').matchAll(new RegExp(KEY_SRC, 'g'))].map(m => `${m[1].toUpperCase()}-${m[2]}`);
+}
+
+/** 태스크 대표 키. slug 우선(제목엔 'SHA-256' 같은 비티켓 토큰이 먼저 올 수 있다). 없으면 null. */
+function taskTicketKey(...texts) {
+  for (const t of texts) {
+    const k = ticketKeys(t)[0];
+    if (k) return k;
+  }
+  return null;
+}
+
+/**
+ * 이 태스크가 '자기 것'으로 선언한 키 집합: slug·제목 + spec.md 메타 불릿(첫 `## ` 섹션 전)
+ * + context.md의 워크트리·브랜치 줄. 에픽 태스크를 서브티켓 워크트리(WP-10045)에서 작업해도
+ * 그 키가 메타·워크트리 줄에 있으면 혼입으로 보지 않는다. 본문(결정·plan)의 언급은 넣지 않는다 —
+ * 83b08b plan에도 'WP-11349 설명 추가'가 있어서, 본문까지 넣으면 실제 사고를 못 잡는다.
+ */
+function taskOwnKeys(taskDir, slug, title) {
+  const own = new Set(ticketKeys(`${slug || ''} ${title || ''}`));
+  let spec = '';
+  let ctx = '';
+  try { spec = fs.readFileSync(path.join(taskDir, 'spec.md'), 'utf-8'); } catch { /* 없음 */ }
+  try { ctx = fs.readFileSync(path.join(taskDir, 'context.md'), 'utf-8'); } catch { /* 없음 */ }
+  const specLines = spec.split('\n');
+  for (const l of specLines.slice(0, 1)) ticketKeys(l).forEach(k => own.add(k)); // `# 제목`
+  let inMeta = true;
+  for (const l of specLines.slice(1)) {
+    if (/^##\s/.test(l) && !/^##\s*📍/.test(l)) inMeta = false;
+    if (inMeta && /^\s*[-*]\s/.test(l)) ticketKeys(l).forEach(k => own.add(k));
+  }
+  for (const l of ctx.split('\n')) {
+    // `- 워크트리: …`, `- **Branch**: …` 처럼 라벨로 시작하는 줄만. 결정·함정 산문에 '브랜치'가
+    // 섞인 줄까지 넣으면 남의 티켓(83b08b의 WP-10935 등)이 자기 키가 돼 실제 혼입을 못 잡는다.
+    if (/^\s*[-*]\s*\**\s*(워크트리|worktree|branch|브랜치)\s*\**\s*[:：]/i.test(l)) ticketKeys(l).forEach(k => own.add(k));
+  }
+  return own;
+}
+
+/** 같은 접두어 키 빈도. 다른 접두어(WP 태스크에 TILLION 작업 혼입 등)는 세지 않는다 — 알려진 한계. */
+function countSiblingKeys(prefix, text) {
+  const counts = new Map();
+  for (const k of ticketKeys(text)) {
+    if (k.split('-')[0] !== prefix) continue;
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * 구간 활동이 태스크와 다른 티켓을 주로 다루면 그 키를, 아니면 null.
+ * ownKeys: taskOwnKeys() 결과(Set) 또는 대표 키 하나.
+ * 오탐을 피하려고 보수적으로 잡는다: 다른 키가 5회 이상이고 자기 키 합계의 3배를 넘어야 한다.
+ * (실측, 도구 출력 제외: 혼입 구간 WP-11349 45 : WP-11327 0 / 정상 구간 중 가장 근접한 것 WP-11327 13 : WP-11349 11)
+ * 도구 출력(out)은 세지 않는다 — git log 등에 남의 티켓이 잔뜩 찍혀도 작업 대상은 아니다.
+ */
+function foreignTicketKey(ownKeys, events) {
+  const own = ownKeys instanceof Set ? ownKeys : new Set(ownKeys ? [ownKeys] : []);
+  if (own.size === 0) return null;
+  const text = (events || []).map(e => [e.in, e.text, e.prompt].filter(Boolean).join(' ')).join('\n');
+  let ownCount = 0; let top = null; let n = 0;
+  for (const prefix of new Set([...own].map(k => k.split('-')[0]))) {
+    for (const [k, c] of countSiblingKeys(prefix, text)) {
+      if (own.has(k)) { ownCount += c; continue; }
+      if (c > n) { top = k; n = c; }
+    }
+  }
+  if (top && n >= 5 && ownCount * 3 < n) return top;
+  return null;
+}
+
+/**
+ * 짧은 요약문(📍)이 자기 키는 안 쓰고 다른 키만 쓰면 그 키 목록. 아니면 [].
+ * 요약은 짧아서 빈도 대신 '자기 키 부재 + 다른 키 존재'로 본다.
+ */
+function mentionsOnlyOtherKeys(ownKeys, text) {
+  const own = ownKeys instanceof Set ? ownKeys : new Set(ownKeys ? [ownKeys] : []);
+  if (own.size === 0) return [];
+  const prefixes = new Set([...own].map(k => k.split('-')[0]));
+  const keys = [...new Set(ticketKeys(text).filter(k => prefixes.has(k.split('-')[0])))];
+  if (keys.length === 0 || keys.some(k => own.has(k))) return [];
+  return keys;
+}
+
 module.exports = {
+  recapSessionFromSpec,
+  ticketKeys,
+  taskTicketKey,
+  taskOwnKeys,
+  foreignTicketKey,
+  mentionsOnlyOtherKeys,
   RECAP_HEADING,
   AUTO_MARKER,
   AUTO_MARKER_RE,

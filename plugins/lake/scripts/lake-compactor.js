@@ -70,6 +70,7 @@ function buildDebugBody(dbg) {
   parts.push([
     `- 시각: ${new Date().toISOString()}`,
     `- spool: ${dbg.spoolName} (구간 ${dbg.eventCount} events${dbg.midSession ? ', mid-session flush' : ''})`,
+    dbg.foreignKey ? `- ⚠ 혼입 의심: 구간 주 티켓 ${dbg.foreignKey} ≠ 태스크 — journal에 표시만 하고 📍·context 생략` : null,
     dbg.error ? `- ⚠ 에러: ${dbg.error}` : null,
     dbg.parseOk === false ? '- ⚠ haiku 출력 파싱 실패 (===JOURNAL===/===CONTEXT=== 블록 없음)' : null,
   ].filter(Boolean).join('\n'));
@@ -264,7 +265,7 @@ function parseBlocks(output) {
   return { journal, context, recap: recapText || null };
 }
 
-function appendJournal(taskDir, journal, eventCount) {
+function appendJournal(taskDir, journal, eventCount, note) {
   const today = new Date().toISOString().slice(0, 10);
   const hm = new Date().toISOString().slice(11, 16);
   const journalDir = path.join(taskDir, 'journal');
@@ -272,7 +273,7 @@ function appendJournal(taskDir, journal, eventCount) {
   const file = path.join(journalDir, `${today}.md`);
   let body = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : `# ${today}\n`;
   if (!body.endsWith('\n')) body += '\n';
-  body += `\n## 세션 자동 기록 (${hm} UTC, ${eventCount} events)\n${journal}\n`;
+  body += `\n## 세션 자동 기록 (${hm} UTC, ${eventCount} events)\n${note ? note + '\n' : ''}${journal}\n`;
   fs.writeFileSync(file, body);
 }
 
@@ -373,6 +374,7 @@ function main() {
       spoolName: path.basename(spoolFile),
       eventCount: seg.events.length,
       midSession,
+      foreignKey: null,
       prompt: null, raw: null, parseOk: null,
       harvest: null, replayTried: false, source: null, finalText: null,
       existingRecap: null, writeResult: null, error: null,
@@ -385,6 +387,17 @@ function main() {
       if (!blocks) {
         failed++;
         log(`parse-fail: ${path.basename(spoolFile)} → ${seg.task.slug}`);
+        continue;
+      }
+      // 구간이 태스크와 다른 티켓을 주로 다뤘으면(참조하려고 resume한 다른 작업 세션 등)
+      // journal에는 표시를 달아 남기되, 사람용 요약(📍)과 자동 상태(context)는 건드리지 않는다.
+      // 거기 들어가면 resume 맨 위에 남의 작업이 '지금 할 일'로 나온다 (2026-10-07 83b08b).
+      dbg.foreignKey = recap.foreignTicketKey(recap.taskOwnKeys(taskDir, seg.task.slug), seg.events);
+      if (dbg.foreignKey) {
+        const sid8 = sessionId.slice(0, 8);
+        appendJournal(taskDir, blocks.journal, seg.events.length,
+          `> ⚠ 혼입 의심: 이 기록은 주로 ${dbg.foreignKey} 작업이다 (세션 ${sid8}). 이 태스크의 📍·자동 상태에는 반영하지 않았다.`);
+        log(`foreign-skip: ${path.basename(spoolFile)} → ${seg.task.slug} (주 티켓 ${dbg.foreignKey}, ${seg.events.length} events)`);
         continue;
       }
       appendJournal(taskDir, blocks.journal, seg.events.length);
@@ -416,7 +429,7 @@ function main() {
         } catch { /* spec 없음 — writeRecap이 no-spec으로 알려준다 */ }
         if (text) {
           dbg.source = source;
-          const result = recap.writeRecap(taskDir, text, new Date().toISOString().slice(0, 10), source);
+          const result = recap.writeRecap(taskDir, text, new Date().toISOString().slice(0, 10), source, sessionId);
           dbg.writeResult = result;
           log(`recap-${result}: ${seg.task.slug} (${source})`);
         } else {

@@ -251,7 +251,7 @@ function buildBriefing(cwd) {
     if (pending > 0) {
       lines.push(`⚠ 미반영 세션 활동 ${pending}건 (spool 대기 중) — 위 상태에 직전 세션 내용이 빠져 있을 수 있다.`);
       lines.push('  직전 세션에서 정한 걸 물으면, 위 요약만 믿지 말고 사용자에게 확인하거나 ' +
-        '`node ~/.claude/prd-lake/lake-cli.js resume <id>` 로 원문을 읽어라.');
+        '`node ~/.claude/prd-lake/lake-cli.js resume <id> --peek` 로 원문을 읽어라.');
     }
 
     return `[PRD Lake 자동 브리핑] 최근 진행 중 태스크와 마지막 상태:\n${lines.join('\n')}\n` +
@@ -260,8 +260,9 @@ function buildBriefing(cwd) {
       'question="기존 lake [<id>] <제목>에 관련 내용이 있습니다. 어떻게 할까요?", ' +
       'options=["복원해서 이어가기", "참조만 하고 새로 시작", "무시하고 새로 시작"]. ' +
       'lake 기록 자체가 오염됐을 수 있어 사용자 판단이 우선이다. ' +
-      '복원/참조를 고르면 그때 `node ~/.claude/prd-lake/lake-cli.js resume <id>`를 Bash로 실행하라 ' +
-      '(이 세션의 자동 기록이 그 태스크로 귀속되는 마커도 이때 찍힌다).';
+      '"복원"을 고르면 그때 `node ~/.claude/prd-lake/lake-cli.js resume <id>`를 Bash로 실행하라 ' +
+      '(이 세션의 자동 기록이 그 태스크로 귀속되는 마커도 이때 찍힌다). ' +
+      '"참조만"을 고르면 반드시 `resume <id> --peek` 로 읽어라 — 플래그 없이 읽으면 지금 하는 다른 작업의 기록이 그 태스크에 섞인다.';
   } catch {
     return '';
   }

@@ -206,7 +206,7 @@ function relDate(ymd) {
 
 // --- Version & Flag Contract ---
 
-const LAKE_CLI_VERSION = '1.16.3';
+const LAKE_CLI_VERSION = '1.17.0';
 
 const VIEW_DEFAULTS = {
   // slim: 헤더 + recap 산문 + `다음:` 한 줄. brief의 기계 추출 섹션(Goal/상태/✅/▶/Blockers)은
@@ -258,6 +258,7 @@ Views: resume --view=slim|brief|summary|full|minimal|recap|files  (default: slim
        list   --view=default|compressed|tree|all  (v1 default: default)
        search --view=default|compressed|full      (v1 default: default; v2 also default)
 Flags: --limit N   --no-color   -h/--help   -v/--version
+       resume --peek   읽기만 한다 — 이 세션을 태스크에 귀속하지 않는다(참조용)
 `;
 
 function printHelp(_cmd) {
@@ -273,6 +274,7 @@ function parseFlags(cmd, args) {
   let limit = null;
   let noColor = false;
   let project = null;
+  let peek = false;
   const positional = [];
   const seen = [];
   for (let i = 0; i < args.length; i++) {
@@ -286,6 +288,7 @@ function parseFlags(cmd, args) {
       process.exit(0);
     }
     if (a === '--no-color') { noColor = true; continue; }
+    if (a === '--peek' && cmd === 'resume') { peek = true; continue; }
     if (a.startsWith('--view=')) {
       const v = a.slice(7);
       if (!allowedView.includes(v)) {
@@ -331,7 +334,7 @@ function parseFlags(cmd, args) {
       process.exit(2);
     }
   }
-  return { view: view || VIEW_DEFAULTS[cmd], limit, noColor, project, positional };
+  return { view: view || VIEW_DEFAULTS[cmd], limit, noColor, project, peek, positional };
 }
 
 // --- Commands ---
@@ -563,12 +566,14 @@ function cmdFind(query) {
 }
 
 function cmdResume(rawArgs) {
-  const { view, positional } = parseFlags('resume', rawArgs);
+  const { view, peek, positional } = parseFlags('resume', rawArgs);
   const query = positional[0];
   const index = readIndex();
   const task = findTask(index, query);
   const dir = taskDir(task);
-  touchActiveMarker(task);
+  // --peek: 다른 작업 중에 '참조만' 하려고 읽는 경우. 마커를 찍으면 그 세션의 이후
+  // 활동 전부가 이 태스크 journal·📍로 들어간다 (2026-10-07 83b08b에 WP-11349 세션 혼입).
+  if (!peek) touchActiveMarker(task);
 
   const isLegacy = process.env.LAKE_LEGACY === '1';
   if (isLegacy) {
@@ -576,9 +581,11 @@ function cmdResume(rawArgs) {
     // v1: stdout unchanged. No [mode=legacy] tag.
   }
 
+  // slim 외 뷰(또는 요약 없어 brief 폴백)에서도 peek였다는 사실은 알린다.
+  if (peek && view !== 'slim') process.stderr.write('[lake] peek: 이 세션은 태스크에 묶이지 않음\n');
   switch (view) {
     case 'full':    process.stdout.write(renderResumeFull(task, index, dir)); return;
-    case 'slim':    process.stdout.write(renderResumeSlim(task, index, dir)); return;
+    case 'slim':    process.stdout.write(renderResumeSlim(task, index, dir, { peek })); return;
     case 'brief':   process.stdout.write(renderResumeBrief(task, index, dir)); return;
     case 'summary': process.stdout.write(renderResumeSummary(task, index, dir)); return;
     case 'minimal':
@@ -1005,15 +1012,39 @@ function renderResumeMinimal(task, index, dir) {
   return out;
 }
 
-function renderResumeSlim(task, index, dir) {
-  // 기본 뷰. 화면에 "요약 하나 + (있으면) 블로커 + 다음 하나"만 남긴다.
+// 이 태스크로 묶인 '다른' 세션의 아직 compactor가 처리 안 한 spool 수.
+// 브리핑의 전역 카운트(자기 세션 포함)와 달리 이 태스크에 들어올 활동만 센다.
+function pendingSpoolForTask(slug) {
+  const spoolDir = path.join(LAKE_DIR, '.spool');
+  const self = process.env.CLAUDE_CODE_SESSION_ID || '';
+  let files;
+  try { files = fs.readdirSync(spoolDir); } catch { return 0; }
+  const sessions = new Set(); // mid-session flush 중엔 X.jsonl.processing 과 새 X.jsonl 이 함께 있다
+  for (const f of files) {
+    const m = f.match(/^(.+)\.jsonl(\.processing)?$/);
+    if (!m || m[1] === self || sessions.has(m[1])) continue;
+    let owner = null;
+    try { owner = JSON.parse(fs.readFileSync(path.join(spoolDir, 'markers', m[1] + '.json'), 'utf-8')).slug; } catch { /* 마커 없음 */ }
+    if (!owner) {
+      const raw = readFileSafe(path.join(spoolDir, f)) || '';
+      const tasks = [...raw.matchAll(/"e":"task"[^\n]*"slug":"([^"]+)"/g)];
+      if (tasks.length) owner = tasks[tasks.length - 1][1];
+    }
+    if (owner === slug) sessions.add(m[1]);
+  }
+  return sessions.size;
+}
+
+function renderResumeSlim(task, index, dir, opts = {}) {
+  // 기본 뷰. 화면에 "할 일(plan) 하나 + (있으면) 블로커 + 지난 대화 요약 하나"만 남긴다.
   //
-  // 예전엔 spec.md의 📍 recap을 무조건 본문으로 썼다. 그 결과
-  // (1) 낡은 recap이 더 최신인 auto-context(현재/다음)를 가렸고,
-  // (2) SessionStart 브리핑은 "더 최신 것"을 고르므로 브리핑과 resume이 같은
-  //     태스크에 서로 다른 요약을 내놨다 — "비슷한듯 핀트가 다른 요약들"의 정체.
-  // 브리핑의 선택 규칙(lake-session-start pickState: 수동 `지금 상태` > 더 최신 것,
-  // 동률이면 context)을 그대로 따라 두 화면이 항상 같은 요약을 말하게 한다.
+  // 순서가 곧 우선순위다. 예전엔 📍 요약을 맨 위에 두고, 요약에 '다음/남은' 류 말이
+  // 있으면 plan 줄을 아예 지웠다. 그래서 다른 세션 요약이 섞였을 때(2026-10-07 83b08b에
+  // WP-11349 세션 요약 혼입) 그게 '지금 할 일'로 읽혔고, 모델이 둘을 동등한 선택지로
+  // 되물었다. 이제 plan.md 다음 할 일이 정본으로 먼저 나오고, 요약은 '참고'로 아래에 둔다.
+  //
+  // 요약 고르기는 브리핑(lake-session-start pickState)과 같다: 수동 `지금 상태` > 더 최신 것,
+  // 동률이면 recap — 두 화면이 같은 요약을 말해야 한다.
   const specRaw = readFileSafe(path.join(dir, 'spec.md')) || '';
   const contextRaw = readFileSafe(path.join(dir, 'context.md')) || '';
 
@@ -1028,20 +1059,52 @@ function renderResumeSlim(task, index, dir) {
   if (ctx && ctx.kind === 'manual') {
     picked = ctx; // 사람이 손으로 쓴 상태가 정본
   } else {
-    // 동률(같은 날)이면 recap — 대화 전체 기반이 도구 로그 요약보다 낫다 (pickState와 동일).
     const candidates = [rec, ctx].filter(Boolean);
     candidates.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     picked = candidates[0] || null;
   }
-  if (!picked) return renderResumeBrief(task, index, dir); // 요약이 아예 없으면 옛 화면이 최선
+  if (!picked) { // 요약이 아예 없으면 옛 화면이 최선
+    const brief = renderResumeBrief(task, index, dir);
+    return opts.peek ? brief + '(peek: 이 세션은 태스크에 묶이지 않음)\n' : brief;
+  }
 
   const days = Math.max(0, daysSince(task.updated));
   const ago = days === 0 ? 'today' : days === 1 ? '1d ago' : `${days}d ago`;
   let out = `=== ${task.title} [${task.id}] · ${task.status} · ${ago} ===\n\n`;
 
-  // 출처·기준일 라벨. 라벨이 없으면 자동 요약이 사람이 확정한 사실처럼 읽힌다.
+  // 경고는 맨 위. 아래 내용을 어떻게 읽어야 하는지 바꾸는 정보라서다.
+  const ownKeys = recaplib.taskOwnKeys(dir, task.slug, task.title);
+  const taskKey = recaplib.taskTicketKey(task.slug, task.title);
+  const otherKeys = picked.kind === 'recap' ? recaplib.mentionsOnlyOtherKeys(ownKeys, picked.text) : [];
+  if (otherKeys.length) {
+    out += `⚠ 아래 📍 요약은 ${otherKeys.join(', ')}만 언급한다 — 이 태스크(${taskKey})와 다른 작업일 수 있다. 할 일은 plan.md 기준.\n`;
+  }
+  const pending = pendingSpoolForTask(task.slug);
+  if (pending > 0) {
+    out += `⚠ 미반영 세션 활동 ${pending}세션 (spool 대기 중) — 아래 내용에 직전 세션에서 정한 게 빠져 있을 수 있다.\n`;
+  }
+  if (otherKeys.length || pending > 0) out += '\n';
+
+  // 1) 할 일 정본: plan.md 미완료 첫 항목. plan.md가 저널보다 낡았으면 항목 자체가
+  //    의심스러우니 내지 않는다 (plan-check 안내는 brief/브리핑 몫).
+  if (!planlib.planStaleInfo(dir)) {
+    const planRaw = readFileSafe(path.join(dir, 'plan.md')) || '';
+    const top = extractPlanUnresolvedTop(planRaw, 1);
+    if (top.length > 0) {
+      const planNext = top[0].replace(/^\s*- \[ \]\s*/, '').replace(/^★\d*\s*/, '').trim();
+      if (planNext) out += `▶ 다음 (plan.md · 할 일 정본): ${planNext}\n\n`;
+    }
+  }
+
+  // 2) 막힌 것. 숨기면 새 세션이 막힌 항목을 착수 가능으로 읽는다.
+  const blocked = ctxlib.blockers(contextRaw);
+  if (blocked) out += `🚧 ${blocked.text}\n\n`;
+
+  // 3) 지난 대화 요약 — 참고용. 출처·기준일·세션 라벨이 없으면 자동 요약이 확정 사실처럼 읽힌다.
+  const sid = picked.kind === 'recap' ? recaplib.recapSessionFromSpec(specRaw) : null;
+  const meta = [picked.date, sid ? '세션 ' + sid : null].filter(Boolean).join(' · ');
   const label = picked.kind === 'recap'
-    ? `📍 지난 세션 요약 (대화 기준${picked.date ? ' · ' + picked.date : ''})`
+    ? `📍 지난 대화 참고 (대화 기준${meta ? ' · ' + meta : ''}) — 할 일과 다르면 plan.md가 맞다`
     : picked.kind === 'manual'
       ? `🧭 지금 상태 (context.md${picked.date ? ' · ' + picked.date : ''})`
       : `🧭 지금 상태 (자동 요약${picked.date ? ' · ' + picked.date : ''})`;
@@ -1052,8 +1115,7 @@ function renderResumeSlim(task, index, dir) {
   out += `${label}\n${body}\n`;
 
   // 요약이 실제 활동보다 이틀 이상 낡았으면 화면이 그 사실을 말한다.
-  // 침묵하면 낡은 요약이 '지금 상태'로 읽힌다. (resume 자체가 updated를 오늘로
-  // 밀어올리므로 하루 차이는 정상 오차 — 경고하지 않는다.)
+  // (resume 자체가 updated를 오늘로 밀어올리므로 하루 차이는 정상 오차 — 경고하지 않는다.)
   if (picked.date) {
     const lagDays = Math.round((new Date(task.updated) - new Date(picked.date)) / 86400000);
     if (lagDays >= 2) {
@@ -1061,25 +1123,9 @@ function renderResumeSlim(task, index, dir) {
     }
   }
 
-  // 막힌 것은 요약과 별도 한 줄. 숨기면 새 세션이 막힌 항목을 착수 가능으로 읽는다.
-  const blocked = ctxlib.blockers(contextRaw);
-  if (blocked) out += `🚧 ${blocked.text}\n`;
-
-  // '다음'은 화면에 하나만. 고른 요약이 이미 방향을 말하고 있으면("다음/남은/해야" 류)
-  // plan.md 항목을 덧붙이지 않는다 — 핀트가 다른 '다음' 두 개가 이 뷰를 다시 망친다.
-  // (과거엔 /다음|next/만 검사해서 recap이 "남은 일은…"이라고 쓰면 못 잡았다.)
-  // plan.md가 저널보다 낡았으면 그 항목 자체가 의심스러우니 아예 내지 않는다.
-  const hasDirection = /다음|남은|이제 |해야|할 일|next/i.test(picked.text);
-  if (!hasDirection && !planlib.planStaleInfo(dir)) {
-    const planRaw = readFileSafe(path.join(dir, 'plan.md')) || '';
-    const top = extractPlanUnresolvedTop(planRaw, 1);
-    if (top.length > 0) {
-      const planNext = top[0].replace(/^\s*- \[ \]\s*/, '').replace(/^★\d*\s*/, '').trim();
-      if (planNext) out += `\n다음 (plan.md): ${planNext}\n`;
-    }
-  }
-
-  out += `\n(slim · 자세히: --view=brief · 전체: --view=full)\n`;
+  out += opts.peek
+    ? `\n(slim · peek: 이 세션은 태스크에 묶이지 않음 · 자세히: --view=brief · 전체: --view=full)\n`
+    : `\n(slim · 자세히: --view=brief · 전체: --view=full)\n`;
   return out;
 }
 

@@ -330,6 +330,105 @@ echo "$rb_out" | grep -q '검증 끝났고 다음은 배포입니다' || ok=0
 echo "$rb_out" | grep -q 'lake:auto-recap' && ok=0     # 기계용 마커는 주입하지 않는다
 if [ "$ok" = 1 ]; then pass "AC-Recap-Briefing"; else fail "AC-Recap-Briefing"; fi
 
+# --- 세션 귀속 혼입 방지 (2026-10-07 83b08b 사고 회귀) ---
+# 같은 저장소 루트(cwd·branch 동일)에서 두 세션이 같은 시각에 돈다.
+#   A = WP-11327 진짜 작업 세션 / B = WP-11349 작업 세션이 83b08b를 '참조'하려고 resume
+# 사고 당시 B가 플래그 없이 resume해 마커를 받았고, B의 저널·🚧·📍가 83b08b에 들어갔다.
+
+echo "=== AC-Resume-Peek-No-Marker (resume --peek는 세션을 태스크에 묶지 않는다) ==="
+make_task WP-11327-native
+printf '[{"id":"83b08b","slug":"WP-11327-native","title":"WP-11327 크리테오 네이티브 개발","project":"nestads","status":"inprogress","created":"2026-10-06","updated":"2026-10-07"}]\n' > "$LAKE/index.json"
+ok=1
+HOME="$FAKE_HOME" CLAUDE_CODE_SESSION_ID=peek-sess node "$S/lake-cli.js" resume 83b08b --peek > "$TMP/peek.out" 2>&1 || ok=0
+[ ! -f "$SPOOL/markers/peek-sess.json" ] || ok=0                       # 마커 없음
+grep -q '"e":"task"' "$SPOOL/peek-sess.jsonl" 2>/dev/null && ok=0      # spool task 이벤트 없음
+HOME="$FAKE_HOME" CLAUDE_CODE_SESSION_ID=bind-sess node "$S/lake-cli.js" resume 83b08b > /dev/null 2>&1 || ok=0
+[ -f "$SPOOL/markers/bind-sess.json" ] || ok=0                         # 복원은 여전히 묶는다
+rm -f "$SPOOL/markers/bind-sess.json" "$SPOOL/bind-sess.jsonl"
+if [ "$ok" = 1 ]; then pass "AC-Resume-Peek-No-Marker"; else fail "AC-Resume-Peek-No-Marker"; fi
+
+# 두 세션 공통: 같은 cwd, 같은 시간창. 이벤트 내용(작업 대상 티켓)만 다르다.
+two_session_spools() { # $1=B가 마커를 가졌는지(bound|peek)
+  local CWD=/w/nestads
+  { printf '{"t":"2026-10-07T05:20:00Z","e":"task","id":"83b08b","slug":"WP-11327-native"}\n'
+    for i in 1 2 3 4 5 6; do printf '{"t":"2026-10-07T05:2%s:00Z","e":"tool","name":"Bash","in":"command=cd %s/nestads-deliverer-WP-11327 && git log","cwd":"%s"}\n' "$i" "$CWD" "$CWD"; done
+  } > "$SPOOL/sess-real.jsonl"
+  set_marker sess-real WP-11327-native
+  { [ "$1" = bound ] && printf '{"t":"2026-10-07T05:20:30Z","e":"task","id":"83b08b","slug":"WP-11327-native"}\n'
+    printf '{"t":"2026-10-07T05:20:10Z","e":"prompt","text":"/plan WP-11349","cwd":"%s"}\n' "$CWD"
+    for i in 1 2 3 4 5 6; do printf '{"t":"2026-10-07T05:2%s:30Z","e":"tool","name":"Bash","in":"command=cd %s/nestads-deliverer-WP-11349 && ./gradlew test # WP-11349","cwd":"%s"}\n' "$i" "$CWD" "$CWD"; done
+  } > "$SPOOL/sess-other.jsonl"
+  if [ "$1" = bound ]; then set_marker sess-other WP-11327-native; else rm -f "$SPOOL/markers/sess-other.json"; fi
+  write_transcript sess-real "$CWD" 2026-10-07T05:27:00Z "WP-11327 SDK 공유 문서 v10까지 정리했습니다."
+  write_transcript sess-other "$CWD" 2026-10-07T05:27:30Z "WP-11349 테스트 7행 표를 정해 주세요."
+}
+OTHER_STUB="$TMP/stub-other.js"
+cat > "$OTHER_STUB" <<'EOS'
+process.stdin.resume();
+process.stdin.on('end', () => {
+  console.log('===JOURNAL===\n- 다른작업 테스트 작성\n===CONTEXT===\n현재: 다른작업 상태\n다음: 다른작업 다음\n블로커: 서브모듈 참조 미동기');
+});
+process.stdin.on('data', () => {});
+EOS
+
+echo "=== AC-Foreign-Segment-Guard (같은 cwd 동시 세션: 묶여버린 다른 작업 세션은 📍·🚧를 못 바꾼다) ==="
+two_session_spools bound
+HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/sess-real.jsonl"
+LAKE_SUMMARIZER_CMD="node $OTHER_STUB" HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/sess-other.jsonl"
+td=$(date -u +%Y-%m-%d); T="$LAKE/inprogress/WP-11327-native"
+ok=1
+grep -q 'WP-11327 SDK 공유 문서' "$T/spec.md" || ok=0                  # 📍 = 진짜 세션
+grep -q 'WP-11349 테스트 7행' "$T/spec.md" && ok=0                     # 다른 작업 📍 금지
+grep -q 'session=sess-rea' "$T/spec.md" || ok=0                        # 📍 출처 세션 기록
+grep -q '서브모듈 참조 미동기' "$T/context.md" && ok=0                  # 다른 작업 🚧 금지
+grep -q '혼입 의심.*WP-11349' "$T/journal/$td.md" || ok=0              # 저널엔 표시하고 남김
+grep -q '다른작업 테스트 작성' "$T/journal/$td.md" || ok=0
+grep -q 'foreign-skip: sess-other' "$SPOOL/compactor.log" || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Foreign-Segment-Guard"; else fail "AC-Foreign-Segment-Guard"; fi
+
+echo "=== AC-Peek-Same-Cwd (참조를 --peek로 하면 다른 작업 세션은 아예 귀속되지 않는다) ==="
+rm -rf "$T"; make_task WP-11327-native
+two_session_spools peek
+HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/sess-real.jsonl"
+LAKE_SUMMARIZER_CMD="node $OTHER_STUB" HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/sess-other.jsonl"
+ok=1
+grep -q '다른작업' "$T/journal/$td.md" && ok=0                         # 저널에도 없음
+grep -q 'WP-11349' "$T/spec.md" && ok=0
+ls "$SPOOL"/unfiled/sess-other* > /dev/null 2>&1 || ok=0               # unfiled로 보존
+if [ "$ok" = 1 ]; then pass "AC-Peek-Same-Cwd"; else fail "AC-Peek-Same-Cwd"; fi
+
+echo "=== AC-Foreign-No-False-Positive (정상 세션이 다른 티켓을 조금 언급해도 혼입으로 안 본다) ==="
+rm -rf "$T"; make_task WP-11327-native; set_marker fp-sess WP-11327-native
+{ for i in 1 2 3 4; do printf '{"t":"2026-10-07T03:4%s:00Z","e":"tool","name":"Bash","in":"command=grep WP-11327 plan.md","cwd":"/w/nestads"}\n' "$i"; done
+  for i in 5 6 7; do printf '{"t":"2026-10-07T03:4%s:00Z","e":"tool","name":"Bash","in":"command=jira WP-11349 WP-11349","cwd":"/w/nestads"}\n' "$i"; done
+} > "$SPOOL/fp-sess.jsonl"   # 실측 근접 사례(13:11)처럼 다른 키가 많아도 태스크 키 3배를 못 넘음
+HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/fp-sess.jsonl"
+ok=1
+grep -q '혼입 의심' "$T/journal/$td.md" && ok=0
+grep -q '스텁 상태' "$T/context.md" || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Foreign-No-False-Positive"; else fail "AC-Foreign-No-False-Positive"; fi
+
+echo "=== AC-Foreign-Epic-Subticket (에픽 태스크를 메타에 적힌 서브티켓 워크트리에서 작업 → 혼입 아님) ==="
+E="$LAKE/inprogress/WP-10038-outstream"; make_task WP-10038-outstream
+printf -- '# WP-10038 아웃스트림 2차\n- **Sub-tickets**: WP-10045(backend)\n\n## Goal\nG.\n' > "$E/spec.md"
+set_marker epic-sess WP-10038-outstream
+for i in 1 2 3 4 5 6; do printf '{"t":"2026-10-07T06:0%s:00Z","e":"tool","name":"Bash","in":"command=cd /w/nestads-backend-WP-10045 && ./gradlew test"}\n' "$i"; done > "$SPOOL/epic-sess.jsonl"
+HOME="$FAKE_HOME" node "$S/lake-compactor.js" "$SPOOL/epic-sess.jsonl"
+ok=1
+grep -q '혼입 의심' "$E/journal/$td.md" && ok=0
+grep -q '스텁 상태' "$E/context.md" || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Foreign-Epic-Subticket"; else fail "AC-Foreign-Epic-Subticket"; fi
+
+echo "=== AC-Ticket-Key-Boundary (feature/WP-11349_fix 처럼 _ 가 붙어도 키로 센다, SHA-256은 대표 키가 아니다) ==="
+ok=1
+node -e "
+const r=require('$S/lake-recap.js');
+const ev=[1,2,3,4,5].map(()=>({in:'git checkout feature/WP-11349_fix'}));
+if (r.foreignTicketKey(new Set(['WP-11327']), ev)!=='WP-11349') process.exit(1);
+if (r.taskTicketKey('wp-9000-sig','SHA-256 서명 교체 WP-9000')!=='WP-9000') process.exit(2);
+" || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Ticket-Key-Boundary"; else fail "AC-Ticket-Key-Boundary"; fi
+
 echo
 echo "================================"
 echo "Results: $PASS passed, $FAIL failed"

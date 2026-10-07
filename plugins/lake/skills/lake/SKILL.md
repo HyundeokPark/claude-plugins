@@ -122,13 +122,13 @@ Templates → see `references/templates.md`. `--parent` flag → see `references
 
 ### `/lake resume [name-or-hash]`
 
-**Bash 1회로 끝낸다. 기본 `--view=slim`(📍 지난 세션 요약 1개 + 다음 할 일 1개 + Blockers). recap이 없으면 brief로 자동 폴백.**
+**Bash 1회로 끝낸다. 기본 `--view=slim`(▶ plan.md 다음 할 일 1개 → 🚧 → 📍 지난 대화 참고). recap이 없으면 brief로 자동 폴백.**
+**다른 작업 중 '참조만' 할 때는 `resume <id> --peek`** — 플래그 없이 부르면 이 세션의 이후 기록 전부가 그 태스크로 귀속된다.
 
 1. No arg: run `list --view=compressed`, AskUserQuestion to select
-2. With arg: `lake-cli.js resume <arg>` → Echo captured stdout verbatim inside a fenced code block. slim이 기본이라 view 플래그 없이 호출.
-   **slim이 나왔으면 정상이다. brief가 안 나왔다고 다시 호출하지 말 것.**
+2. With arg: `lake-cli.js resume <arg>` → Echo captured stdout verbatim inside a fenced code block. slim이 기본이라 view 플래그 없이 호출. **slim이 나왔으면 정상이다. brief가 안 나왔다고 다시 호출하지 말 것.**
 3. `--view=brief`(Goal/여기까지/이제 할 차례/대기중/Blockers/Context)는 사용자가 "자세히"를 원하거나 그 task 작업을 이어서 요청할 때(구현/디버그/수정 등)만 호출하고, 그 컨텍스트로 곧바로 시작한다 — full을 미리 호출하지 말 것.
-4. **slim/brief 최상단에 `⚠ plan.md가 저널보다 낡음` 또는 `⚠ 요약 기준일 … 미반영`이 뜨면 할 일 목록을 그대로 보고하지 말 것.**
+4. **slim/brief 최상단에 `⚠ plan.md가 저널보다 낡음` 또는 `⚠ 요약 기준일 … 미반영`이 뜨면 할 일 목록을 그대로 보고하지 말 것.** `⚠ 📍 요약은 …만 언급`이 뜨거나 📍와 ▶가 다른 일을 말하면 ▶(plan.md) 기준으로 보고하고, 📍는 "다른 세션(세션 id) 대화 요약"이라고 밝힌다 — 둘을 동등한 선택지로 묻지 말 것.
    `plan-check <hash>`를 먼저 돌려 후보를 판정한 뒤 이어간다. `⏳ 대기중`은 착수 가능한 일이 아니고, 폐기(`[-]`)는 brief에서 숨겨진다(`--view=full`에서 확인).
    **`… 외 N건`이 붙어 있으면 "이게 전부"라고 보고하지 말 것** — 감춰진 N건이 있다.
 5. 작업 중 journal/history 정보가 *명시적으로* 필요할 때만 `--view=full` 호출.

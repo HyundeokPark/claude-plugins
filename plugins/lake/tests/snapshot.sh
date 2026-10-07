@@ -368,20 +368,19 @@ grep -q '삼켜지면 안 되는 메타' $TMP/rb.out && ok=0
 grep -q '목표 한 줄' $TMP/rb.out || ok=0            # Goal은 정상 추출
 if [ "$ok" = 1 ]; then pass "AC-Recap-Section-Bounded"; else fail "AC-Recap-Section-Bounded"; fi
 
-echo "=== AC-Slim-Default (기본 뷰 = 요약 하나 + 다음 하나, 기계 추출 섹션 없음) ==="
-# slim: 출처 라벨이 붙은 요약 하나 + (요약에 방향이 없을 때만) plan '다음' 한 줄.
+echo "=== AC-Slim-Default (기본 뷰 = plan 다음 하나 → 요약 하나(참고), 기계 추출 섹션 없음) ==="
+# slim: plan '다음' 한 줄(할 일 정본, 항상 먼저) + 출처 라벨이 붙은 요약 하나(참고).
 # 브리핑(pickState)과 같은 규칙으로 더 최신 요약을 고른다 — 화면마다 다른 요약 금지
 # (v1.15.0). brief의 Goal/상태/▶ 섹션은 낡은 파일의 기계 추출이라 기본 화면에서 뺀다.
 $CLI resume recap-render > $TMP/sd.out
 ok=1
 grep -q '뭘 하던 중이고 여기까지 됐습니다' $TMP/sd.out || ok=0   # recap 산문 노출
-grep -q '📍 지난 세션 요약' $TMP/sd.out || ok=0                  # 출처·기준일 라벨
+grep -q '📍 지난 대화 참고' $TMP/sd.out || ok=0                  # 출처·기준일 라벨 (v1.17: 참고로 강등)
 grep -q '## 📍' $TMP/sd.out && ok=0                              # 마크다운 헤딩 없이
 grep -q '📌' $TMP/sd.out && ok=0                                 # Goal 섹션 미출력
 grep -q '이제 할 차례' $TMP/sd.out && ok=0                        # plan 추출 섹션 미출력
-grep -q '^다음 (plan.md):' $TMP/sd.out && ok=0                   # recap에 '다음'이 있으니 중복 금지
 grep -q 'view=brief' $TMP/sd.out || ok=0                         # 상세로 가는 길 안내
-# recap에 방향("다음/남은/해야" 류)이 없으면 plan 최우선(★) 1건을 한 줄로
+# plan 최우선(★) 1건이 요약보다 먼저 나온다 — 요약 내용과 무관 (v1.17: 2026-10-07 83b08b 혼입 사고)
 make_plan_task slim-next '# Plan
 
 ## Checklist
@@ -391,16 +390,51 @@ make_plan_task slim-next '# Plan
 printf -- '# slim-next\n\n## 📍 사람용 요약\n<!-- lake:auto-recap -->\n(2026-08-14) 조사만 끝냈습니다.\n\n## Goal\nG.\n' \
   > "$PLAN_LAKE/inprogress/slim-next/spec.md"
 $CLI resume slim-next > $TMP/sd2.out
-grep -q '^다음 (plan.md): 급한 것' $TMP/sd2.out || ok=0
+grep -q '^▶ 다음 (plan.md · 할 일 정본): 급한 것' $TMP/sd2.out || ok=0
+[ "$(grep -n '^▶ 다음' $TMP/sd2.out | cut -d: -f1)" -lt "$(grep -n '^📍' $TMP/sd2.out | cut -d: -f1)" ] || ok=0
 # plan.md가 저널보다 낡으면 '다음' 자체를 내지 않는다 (낡은 할 일 단정 금지)
 printf -- '# 2026-08-13\n- 급한 것은 폐기함.\n' > "$PLAN_LAKE/inprogress/slim-next/journal/2026-08-13.md"
 touch -t 202608110900 "$PLAN_LAKE/inprogress/slim-next/plan.md"
 $CLI resume slim-next > $TMP/sd3.out
-grep -q '^다음 (plan.md):' $TMP/sd3.out && ok=0
+grep -q '^▶ 다음' $TMP/sd3.out && ok=0
 # recap이 없는 태스크는 기존 brief로 폴백 (대체재가 없다)
 $CLI resume plan-legacy > $TMP/sd4.out
 grep -q '이제 할 차례' $TMP/sd4.out || ok=0
 if [ "$ok" = 1 ]; then pass "AC-Slim-Default"; else fail "AC-Slim-Default"; fi
+
+echo "=== AC-Slim-Foreign-Recap (📍가 다른 티켓만 말하면 경고 + 출처 세션 표시, plan이 먼저) ==="
+make_plan_task WP-11327-x '# Plan
+
+## Checklist
+- [ ] ★1 SDK 공유 문서 마무리
+'
+printf -- '# WP-11327 크리테오 네이티브\n\n## 📍 사람용 요약\n<!-- lake:auto-recap source=away_summary session=0e7b4b32 -->\n(2026-08-14) WP-11349 테스트 7행 표를 정해 주세요.\n\n## Goal\nG.\n' \
+  > "$PLAN_LAKE/inprogress/WP-11327-x/spec.md"
+$CLI resume WP-11327-x > $TMP/sf.out
+ok=1
+grep -q '⚠ 아래 📍 요약은 WP-11349만 언급' $TMP/sf.out || ok=0
+grep -q '세션 0e7b4b32' $TMP/sf.out || ok=0
+[ "$(grep -n '^▶ 다음' $TMP/sf.out | cut -d: -f1)" -lt "$(grep -n '^📍' $TMP/sf.out | cut -d: -f1)" ] || ok=0
+# 태스크 키를 같이 말하는 요약은 경고하지 않는다
+printf -- '# WP-11327 크리테오 네이티브\n\n## 📍 사람용 요약\n<!-- lake:auto-recap source=away_summary -->\n(2026-08-14) WP-11327 문서에 WP-11349 설명만 남았습니다.\n\n## Goal\nG.\n' \
+  > "$PLAN_LAKE/inprogress/WP-11327-x/spec.md"
+$CLI resume WP-11327-x > $TMP/sf2.out
+grep -q '⚠ 아래 📍' $TMP/sf2.out && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Slim-Foreign-Recap"; else fail "AC-Slim-Foreign-Recap"; fi
+
+echo "=== AC-Slim-Pending-Spool (이 태스크로 묶인 다른 세션의 미처리 spool을 slim에 표시) ==="
+rm -rf "$PLAN_LAKE/.spool"   # 앞선 resume 호출이 실행 셸의 세션 id로 남긴 spool 제거
+mkdir -p "$PLAN_LAKE/.spool/markers"
+printf '{"t":"2026-08-14T10:00:00Z","e":"tool"}\n' > "$PLAN_LAKE/.spool/other-sess.jsonl"
+printf '{"id":"x","slug":"WP-11327-x","at":"2026-08-14T10:00:00Z"}\n' > "$PLAN_LAKE/.spool/markers/other-sess.json"
+printf '{"t":"2026-08-14T10:00:00Z","e":"tool"}\n' > "$PLAN_LAKE/.spool/unrelated-sess.jsonl"   # 다른 태스크 → 세지 않음
+ok=1
+CLAUDE_CODE_SESSION_ID=self-sess $CLI resume WP-11327-x --peek > $TMP/sp.out
+grep -q '미반영 세션 활동 1세션' $TMP/sp.out || ok=0
+grep -q 'peek: 이 세션은 태스크에 묶이지 않음' $TMP/sp.out || ok=0
+[ ! -f "$PLAN_LAKE/.spool/markers/self-sess.json" ] || ok=0
+rm -rf "$PLAN_LAKE/.spool"
+if [ "$ok" = 1 ]; then pass "AC-Slim-Pending-Spool"; else fail "AC-Slim-Pending-Spool"; fi
 
 echo "=== AC-Slim-Freshest (auto-context가 recap보다 최신이면 그쪽이 본문 — 브리핑과 동일 규칙) ==="
 # 실사고: 브리핑은 최신 auto-context를, resume은 낡은 recap을 보여줘 같은 태스크에
@@ -521,7 +555,7 @@ make_plan_task ctx-ko-state '# Plan
 '
 printf -- '# Context\n\n## 좌표\n표 같은 것.\n\n## 지금 상태 (2026-08-21)\n\n코드 착수 직전. 막힌 것은 사용자 답 하나다.\n\n## 실측 수치\n안 나와야 한다.\n' \
   > "$PLAN_LAKE/inprogress/ctx-ko-state/context.md"
-$CLI resume ctx-ko-state > $TMP/cks.out
+$CLI resume ctx-ko-state --view=brief > $TMP/cks.out   # brief 검증 AC — slim 기본화 뒤 set -e로 조용히 중단되던 지점
 ok=1
 grep -q '지금 상태' $TMP/cks.out || ok=0
 grep -q '막힌 것은 사용자 답 하나다' $TMP/cks.out || ok=0

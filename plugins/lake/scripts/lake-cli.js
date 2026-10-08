@@ -206,7 +206,7 @@ function relDate(ymd) {
 
 // --- Version & Flag Contract ---
 
-const LAKE_CLI_VERSION = '1.17.0';
+const LAKE_CLI_VERSION = '1.17.1';
 
 const VIEW_DEFAULTS = {
   // slim: 헤더 + recap 산문 + `다음:` 한 줄. brief의 기계 추출 섹션(Goal/상태/✅/▶/Blockers)은
@@ -771,19 +771,61 @@ function planPriorityRank(line) {
   return m[1] ? parseInt(m[1], 10) : 0;      // 숫자 없는 ★ 는 최상위
 }
 
+// 저널 끝과 '같은 일'임을 가리키는 식별자: PR·이슈 번호, 티켓 키, 3자리 이상 숫자.
+// 일반 단어(설명·사용자 등)는 넣지 않는다 — 아무 항목에나 걸려 엉뚱한 걸 고른다.
+function strongTokens(text) {
+  const out = new Set();
+  for (const m of String(text || '').matchAll(/(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9]{1,9}-\d{2,}|\d{3,})(?![A-Za-z0-9])/g)) {
+    out.add(m[1].toUpperCase());
+  }
+  return out;
+}
+
+/**
+ * slim의 '다음 할 일' 하나. resume의 목적은 사람이 plan을 정리하지 않아도 바로 다음 일을
+ * 아는 것이다. plan.md에 같은 ★1이 여러 섹션에 남아 있으면 파일 첫 ★1(대개 지난 섹션)이
+ * 뽑혔다 (2026-10-08 83b08b: 실제는 'PR #1223 리뷰 대응'인데 지난 'SDK·기획 공유'가 나옴).
+ * 그래서 저널 끝(실제로 마지막에 끝난 작업)과 식별자를 공유하는 미완료 항목을 먼저 고른다.
+ * 겹치는 게 없을 때만 예전 규칙(★ 순위 → 파일 순서).
+ * @returns {{line, matched}} 또는 null
+ */
+function pickPlanNext(planText, tailText) {
+  const all = planUnresolvedLines(planText)
+    .map((line, i) => ({ line, i, rank: planPriorityRank(line) }));
+  if (all.length === 0) return null;
+  const tailTok = strongTokens(tailText);
+  if (tailTok.size) {
+    const scored = all
+      .map(x => ({ ...x, score: [...strongTokens(x.line)].filter(t => tailTok.has(t)).length }))
+      .filter(x => x.score > 0)
+      .sort((a, b) => (b.score - a.score) || (a.rank - b.rank) || (a.i - b.i));
+    if (scored.length) return { line: scored[0].line, matched: true };
+  }
+  all.sort((a, b) => (a.rank - b.rank) || (a.i - b.i));
+  return { line: all[0].line, matched: false };
+}
+
 function countPlanUnresolved(planText) {
   return planUnresolvedLines(planText).length;
 }
 
-function extractPlanUnresolvedTop(planText, n) {
+function extractPlanUnresolvedTop(planText, n, dir) {
   const all = planUnresolvedLines(planText);
   // 같은 순위끼리는 파일 순서를 지켜야 하므로 index를 tiebreak으로 쓴다
   // (Array.prototype.sort 의 안정성에 기대지 않는다).
-  return all
+  const ordered = all
     .map((line, i) => ({ line, i, rank: planPriorityRank(line) }))
     .sort((a, b) => (a.rank - b.rank) || (a.i - b.i))
-    .slice(0, n)
     .map(x => x.line);
+  // 모든 뷰가 slim과 같은 '다음 할 일'을 맨 앞에 둔다 — 저널 끝에서 이어지는 항목.
+  if (dir) {
+    const tail = ctxlib.journalTail(dir);
+    const next = pickPlanNext(planText, tail ? tail.text : '');
+    if (next && next.matched) {
+      return [next.line, ...ordered.filter(l => l !== next.line)].slice(0, n);
+    }
+  }
+  return ordered.slice(0, n);
 }
 
 function truncateLines(text, maxLines, maxChars, sectionLabel) {
@@ -829,7 +871,7 @@ function renderResumeSummary(task, index, dir) {
 
   // Build PROTECTED content first
   const blockersSection = extractBlockersSection(contextRaw);
-  const unresolvedTop = extractPlanUnresolvedTop(planRaw, 5);
+  const unresolvedTop = extractPlanUnresolvedTop(planRaw, 5, dir);
   const latestDecision = extractLatestDecision(contextRaw);
   const latestJournalHeadline = extractLatestJournalHeadline(latestJournalText);
 
@@ -1000,7 +1042,7 @@ function renderResumeMinimal(task, index, dir) {
   if (lastLine) out += `Last (${lastDate}): ${truncate(lastLine, 110)}\n`;
 
   const planRaw = readFileSafe(path.join(dir, 'plan.md')) || '';
-  const unresolved = extractPlanUnresolvedTop(planRaw, 3);
+  const unresolved = extractPlanUnresolvedTop(planRaw, 3, dir);
   if (unresolved.length > 0) {
     // brief와 같은 이유로, 감춘 건수를 밝힌다 (조용한 절단 = "이게 전부"로 오독됨).
     const restCount = countPlanUnresolved(planRaw) - unresolved.length;
@@ -1098,10 +1140,11 @@ function renderResumeSlim(task, index, dir, opts = {}) {
   //    의심스러우니 내지 않는다 (plan-check 안내는 brief/브리핑 몫).
   if (!planlib.planStaleInfo(dir)) {
     const planRaw = readFileSafe(path.join(dir, 'plan.md')) || '';
-    const top = extractPlanUnresolvedTop(planRaw, 1);
-    if (top.length > 0) {
-      const planNext = top[0].replace(/^\s*- \[ \]\s*/, '').replace(/^★\d*\s*/, '').trim();
-      if (planNext) out += `▶ 다음 (plan.md 첫 미완료 — 저널 끝과 다르면 저널이 맞다): ${planNext}\n\n`;
+    const next = pickPlanNext(planRaw, tail ? tail.text : '');
+    if (next) {
+      const planNext = next.line.replace(/^\s*- \[ \]\s*/, '').replace(/^★\d*\s*/, '').trim();
+      const why = next.matched ? '저널 끝에서 이어지는 plan 항목' : 'plan.md 최우선 미완료 — 저널 끝과 다르면 저널이 맞다';
+      if (planNext) out += `▶ 다음 (${why}): ${planNext}\n\n`;
     }
   }
 
@@ -1222,7 +1265,7 @@ function renderResumeBrief(task, index, dir) {
   }
 
   // "이제 할 차례"에는 `- [ ]`(착수 가능)만. `- [~]`(대기)·`- [-]`(폐기)는 여기 오면 안 된다.
-  const unresolved = extractPlanUnresolvedTop(planRaw, 3);
+  const unresolved = extractPlanUnresolvedTop(planRaw, 3, dir);
   if (unresolved.length > 0) {
     // 잘린 걸 말하지 않으면 "이게 전부"로 읽힌다. 몇 건을 감췄는지 반드시 밝힌다.
     const restCount = countPlanUnresolved(planRaw) - unresolved.length;

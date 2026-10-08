@@ -390,7 +390,7 @@ make_plan_task slim-next '# Plan
 printf -- '# slim-next\n\n## 📍 사람용 요약\n<!-- lake:auto-recap -->\n(2026-08-14) 조사만 끝냈습니다.\n\n## Goal\nG.\n' \
   > "$PLAN_LAKE/inprogress/slim-next/spec.md"
 $CLI resume slim-next > $TMP/sd2.out
-grep -q '^▶ 다음 (plan.md 첫 미완료 — 저널 끝과 다르면 저널이 맞다): 급한 것' $TMP/sd2.out || ok=0
+grep -q '^▶ 다음 (plan.md 최우선 미완료 — 저널 끝과 다르면 저널이 맞다): 급한 것' $TMP/sd2.out || ok=0
 [ "$(grep -n '^▶ 다음' $TMP/sd2.out | cut -d: -f1)" -lt "$(grep -n '^📍' $TMP/sd2.out | cut -d: -f1)" ] || ok=0
 # plan.md가 저널보다 낡으면 '다음' 자체를 내지 않는다 (낡은 할 일 단정 금지)
 printf -- '# 2026-08-13\n- 급한 것은 폐기함.\n' > "$PLAN_LAKE/inprogress/slim-next/journal/2026-08-13.md"
@@ -421,6 +421,29 @@ printf -- '# WP-11327 크리테오 네이티브\n\n## 📍 사람용 요약\n<!-
 $CLI resume WP-11327-x > $TMP/sf2.out
 grep -q '⚠ 아래 📍' $TMP/sf2.out && ok=0
 if [ "$ok" = 1 ]; then pass "AC-Slim-Foreign-Recap"; else fail "AC-Slim-Foreign-Recap"; fi
+
+echo "=== AC-Slim-Next-Follows-Journal (★1이 여러 섹션에 있으면 저널 끝과 이어지는 항목을 고른다) ==="
+make_plan_task next-follow '# Plan
+
+## 1. 공유
+- [ ] ★1 SDK·기획 공유 (사용자)
+
+## 3. PR
+- [x] 커밋 squash → PR #1223
+- [ ] ★1 PR #1223 리뷰 대응
+'
+printf -- '# 2026-08-14\n\n## 오후\n- 강제 push → PR #1223 올림, test 2168 fail 0\n' > "$PLAN_LAKE/inprogress/next-follow/journal/2026-08-14.md"
+touch -t 202608150900 "$PLAN_LAKE/inprogress/next-follow/plan.md"
+$CLI resume next-follow > $TMP/nf.out
+ok=1
+# 요약이 없으면 brief로 폴백한다 — brief의 할 일 목록도 같은 항목을 맨 앞에 둬야 한다
+[ "$(grep -A1 '이제 할 차례' $TMP/nf.out | tail -1)" = '- [ ] ★1 PR #1223 리뷰 대응' ] || ok=0
+# 요약이 있으면 slim — ▶ 한 줄이 저널을 따른다
+printf -- '# Context\n\n<!-- lake:auto-context:start -->\n## 자동 상태 (compactor, 2026-08-14)\n현재: PR 올림.\n<!-- lake:auto-context:end -->\n' > "$PLAN_LAKE/inprogress/next-follow/context.md"
+$CLI resume next-follow > $TMP/nf2.out
+grep -q '^▶ 다음 (저널 끝에서 이어지는 plan 항목): PR #1223 리뷰 대응' $TMP/nf2.out || ok=0
+grep -q 'SDK·기획 공유' $TMP/nf2.out && ok=0
+if [ "$ok" = 1 ]; then pass "AC-Slim-Next-Follows-Journal"; else fail "AC-Slim-Next-Follows-Journal"; fi
 
 echo "=== AC-Slim-Pending-Spool (이 태스크로 묶인 다른 세션의 미처리 spool을 slim에 표시) ==="
 rm -rf "$PLAN_LAKE/.spool"   # 앞선 resume 호출이 실행 셸의 세션 id로 남긴 spool 제거

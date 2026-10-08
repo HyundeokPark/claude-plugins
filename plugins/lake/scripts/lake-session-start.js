@@ -125,6 +125,12 @@ function fileDate(p) {
   }
 }
 
+function clipStateTail(text) {
+  const s = String(text || '').replace(/\n\s*\n+/g, '\n').trim();
+  if (!s) return null;
+  return s.length > STATE_MAX_CHARS ? '…' + s.slice(s.length - STATE_MAX_CHARS + 1) : s;
+}
+
 // context.md의 "지금 상태". 파싱은 lake-context 한 곳에만 있다 — resume brief와
 // 같은 규칙을 봐야 한다. 과거엔 여기서 compactor 자동 구간만 정규식으로 긁었고,
 // 사람이 손으로 쓴 `## 지금 상태` 는 헤딩이 한국어라 통째로 무시됐다.
@@ -178,8 +184,19 @@ function readHumanRecap(slug) {
 // 규칙 2 — 없으면 📍 요약과 자동 요약 중 **더 최신** 을 쓴다. 예전엔 `recap || auto` 라
 //   2주 전 recap이 3일 전 자동 요약을 이겼다. 낡은 쪽이 이기는 우선순위가
 //   "브리프에 계속 틀린 내용이 담긴다"의 나머지 절반이었다.
+// 규칙 0 — 저널 마지막 블록이 정본이다 (lake-context.journalTail 주석 참고).
+//   context.md·📍 요약은 저널을 다시 요약한 것이라, 같은 날 안에서 순서를 모르고
+//   이미 끝낸 일을 "다음"으로 되살렸다. 수동 `## 지금 상태` 헤딩에 저널보다 **늦은**
+//   날짜가 박혀 있을 때만 그쪽이 이긴다 (사람이 저널 뒤에 일부러 정정한 경우).
 function pickState(slug) {
   const ctx = readContextState(slug);
+  const tail = ctxlib.journalTail(path.join(INPROGRESS, slug));
+  if (tail) {
+    const manualNewer = ctx && ctx.manual && ctx.date && ctx.date > tail.date;
+    if (!manualNewer) {
+      return { text: tail.text, date: tail.date, label: `저널 끝 · ${tail.heading}`, manual: false, tail: true };
+    }
+  }
   if (ctx && ctx.manual) return ctx;
 
   const rec = readHumanRecap(slug);
@@ -223,7 +240,8 @@ function buildBriefing(cwd) {
     for (const t of inprog.slice(0, 3)) {
       lines.push(`- [${t.id}] ${t.title} (${t.project || '-'}, updated ${t.updated})`);
       const state = pickState(t.slug);
-      const body = state && clipState(state.text);
+      // 저널 끝은 마지막 줄이 제일 최근이다 — 뒤를 자르면 정작 끝난 지점이 사라진다.
+      const body = state && (state.tail ? clipStateTail(state.text) : clipState(state.text));
       if (body) {
         // 출처와 날짜를 반드시 같이 낸다. 라벨 없는 요약은 AI가 '지금 확정된 사실'로 읽는다.
         lines.push(`  [${state.label}${state.date ? ` · ${state.date}` : ''}] ` +
@@ -255,6 +273,8 @@ function buildBriefing(cwd) {
     }
 
     return `[PRD Lake 자동 브리핑] 최근 진행 중 태스크와 마지막 상태:\n${lines.join('\n')}\n` +
+      '→ "다음 할 일"은 [저널 끝] 줄(마지막으로 실제 끝난 작업)에서 이어서 말하라. ' +
+      'plan.md·요약이 저널 끝과 다르면 저널이 맞다 — 이미 끝난 일을 다음 할 일로 내지 마라.\n' +
       '→ [필수] 사용자의 요청이 위 태스크 중 하나와 관련되면, 다른 도구를 호출하기 전에 ' +
       '**AskUserQuestion 도구**로 먼저 물어라 (자연어 질문 금지, resume 자동 실행 금지). ' +
       'question="기존 lake [<id>] <제목>에 관련 내용이 있습니다. 어떻게 할까요?", ' +

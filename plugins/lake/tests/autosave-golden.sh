@@ -144,7 +144,8 @@ ok=1
 echo "$brief_out" | grep -q '자동 브리핑' || ok=0
 echo "$brief_out" | grep -q 'Auto Task' || ok=0
 echo "$brief_out" | grep -q 'resume' || ok=0        # AI에게 resume 지시 포함
-echo "$brief_out" | grep -q '스텁 상태' || ok=0     # compactor가 쓴 자동 상태 섹션 내용
+echo "$brief_out" | grep -q '\[저널 끝 · ' || ok=0  # 저널 마지막 블록이 정본 (같은 날 자동 상태보다 우선)
+echo "$brief_out" | grep -q '스텁 상태' && ok=0     # 저널을 다시 요약한 자동 상태는 저널이 있으면 안 낸다
 if [ "$ok" = 1 ]; then pass "AC-SessionStart-Briefing"; else fail "AC-SessionStart-Briefing"; fi
 
 echo "=== AC-Cli-Marker-Per-Session (resume이 세션별 마커 기록) ==="
@@ -324,6 +325,8 @@ if [ "$ok" = 1 ]; then pass "AC-Recap-Manual-Kept"; else fail "AC-Recap-Manual-K
 
 echo "=== AC-Recap-Briefing (SessionStart 브리핑이 📍를 우선 사용) ==="
 printf '[{"id":"rh0001","slug":"recap-h","title":"Recap H","project":"t","status":"inprogress","created":"2026-08-01","updated":"2026-08-14"}]\n' > "$LAKE/index.json"
+# 저널이 있으면 저널 끝이 이긴다(AC-SessionStart-Briefing). 📍는 저널이 없을 때의 대체재다.
+rm -rf "$LAKE/inprogress/recap-h/journal"
 rb_out=$(printf '{"session_id":"rb-sess","cwd":"/tmp"}' | HOME="$FAKE_HOME" node "$S/lake-session-start.js" 2>/dev/null)
 ok=1
 echo "$rb_out" | grep -q '검증 끝났고 다음은 배포입니다' || ok=0

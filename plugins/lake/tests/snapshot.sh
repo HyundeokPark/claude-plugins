@@ -390,7 +390,7 @@ make_plan_task slim-next '# Plan
 printf -- '# slim-next\n\n## 📍 사람용 요약\n<!-- lake:auto-recap -->\n(2026-08-14) 조사만 끝냈습니다.\n\n## Goal\nG.\n' \
   > "$PLAN_LAKE/inprogress/slim-next/spec.md"
 $CLI resume slim-next > $TMP/sd2.out
-grep -q '^▶ 다음 (plan.md · 할 일 정본): 급한 것' $TMP/sd2.out || ok=0
+grep -q '^▶ 다음 (plan.md 첫 미완료 — 저널 끝과 다르면 저널이 맞다): 급한 것' $TMP/sd2.out || ok=0
 [ "$(grep -n '^▶ 다음' $TMP/sd2.out | cut -d: -f1)" -lt "$(grep -n '^📍' $TMP/sd2.out | cut -d: -f1)" ] || ok=0
 # plan.md가 저널보다 낡으면 '다음' 자체를 내지 않는다 (낡은 할 일 단정 금지)
 printf -- '# 2026-08-13\n- 급한 것은 폐기함.\n' > "$PLAN_LAKE/inprogress/slim-next/journal/2026-08-13.md"
@@ -642,6 +642,42 @@ ok=1
 grep -q '날짜 없는 수동 메모' $TMP/cud.out || ok=0
 grep -q '현재: 자동 요약' $TMP/cud.out && ok=0
 if [ "$ok" = 1 ]; then pass "AC-Context-Undated-Manual-Still-Wins"; else fail "AC-Context-Undated-Manual-Still-Wins"; fi
+
+echo '=== AC-Journal-Tail-Wins (저널 마지막 블록이 브리핑·slim의 정본, 같은 날 요약보다 우선) ==='
+# 2026-10-07 WP-11327: 저널은 "설계 완료, 다음 /test-writer"인데 같은 날 자동 요약이
+# 이미 정한 정책을 "결정 필요"로 내 브리핑의 다음 할 일이 실제와 어긋났다.
+# 수동 저장 뒤에 붙은 자동 기록이 더 최근이면 그게 끝 지점이다(수동만 고르면 안 된다).
+make_plan_task jtail '# Plan
+
+## Checklist
+- [ ] 정책 결정
+'
+printf -- '# Context\n\n<!-- lake:auto-context:start -->\n## 자동 상태 (compactor, 2099-01-02)\n현재: 낡은 자동 요약.\n다음: 정책 결정 필요(이미 끝남).\n<!-- lake:auto-context:end -->\n' \
+  > "$PLAN_LAKE/inprogress/jtail/context.md"
+printf -- '# 2099-01-01\n\n## lake save\n- 옛날 저장.\n' > "$PLAN_LAKE/inprogress/jtail/journal/2099-01-01.md"
+printf -- '# 2099-01-02\n\n## 저녁 세션 (lake save)\n- 정책 확정함.\n- 다음 /test-writer.\n\n## 세션 자동 기록 (10:01 UTC, 9 events)\n- 첫 줄.\n- 구현 끝, 테스트 통과.\n' \
+  > "$PLAN_LAKE/inprogress/jtail/journal/2099-01-02.md"
+node -e "
+const fs=require('fs');const p='$PLAN_LAKE/index.json';
+const idx=JSON.parse(fs.readFileSync(p,'utf8'));
+for (const t of idx) if (t.slug==='jtail') t.updated='2099-01-02';
+fs.writeFileSync(p,JSON.stringify(idx,null,2));"
+$CLI resume jtail --peek > $TMP/jt.out 2>/dev/null
+jt_ss=$(HOME="$FAKE_HOME" TZ=UTC node "$PLUGIN_DIR/scripts/lake-session-start.js" 2>/dev/null \
+  | node -e "let r='';process.stdin.on('data',d=>r+=d);process.stdin.on('end',()=>{try{process.stdout.write((JSON.parse(r).hookSpecificOutput||{}).additionalContext||'')}catch(e){}})")
+ok=1
+grep -q '^🧾 저널 끝 (2099-01-02 · 세션 자동 기록 (10:01 UTC, 9 events))' $TMP/jt.out || ok=0
+grep -q '구현 끝, 테스트 통과' $TMP/jt.out || ok=0
+grep -q '정책 결정 필요(이미 끝남)' $TMP/jt.out && ok=0   # 같은 날 2차 요약은 slim에서도 숨긴다
+printf '%s' "$jt_ss" | grep -q '\[저널 끝 · 세션 자동 기록 (10:01 UTC, 9 events) · 2099-01-02\]' || ok=0
+printf '%s' "$jt_ss" | grep -q '구현 끝, 테스트 통과' || ok=0
+printf '%s' "$jt_ss" | grep -q '정책 결정 필요(이미 끝남)' && ok=0
+printf '%s' "$jt_ss" | grep -q '저널 끝\] 줄(마지막으로 실제 끝난 작업)에서 이어서' || ok=0
+# 수동 `## 지금 상태` 가 저널보다 늦은 날짜면 그쪽이 이긴다 (사람이 일부러 정정)
+printf -- '# Context\n\n## 지금 상태 (2099-01-03)\n사람이 정정한 상태.\n' > "$PLAN_LAKE/inprogress/jtail/context.md"
+jt_ss2=$(HOME="$FAKE_HOME" TZ=UTC node "$PLUGIN_DIR/scripts/lake-session-start.js" 2>/dev/null)
+printf '%s' "$jt_ss2" | grep -q '사람이 정정한 상태' || ok=0
+if [ "$ok" = 1 ]; then pass "AC-Journal-Tail-Wins"; else fail "AC-Journal-Tail-Wins"; cat $TMP/jt.out; printf '%s\n' "$jt_ss"; fi
 
 echo '=== AC-Recap-No-Downgrade (away_summary 리캡을 haiku가 덮지 않는다) ==='
 ok=1

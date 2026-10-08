@@ -1075,7 +1075,10 @@ function renderResumeSlim(task, index, dir, opts = {}) {
   // 경고는 맨 위. 아래 내용을 어떻게 읽어야 하는지 바꾸는 정보라서다.
   const ownKeys = recaplib.taskOwnKeys(dir, task.slug, task.title);
   const taskKey = recaplib.taskTicketKey(task.slug, task.title);
-  const otherKeys = picked.kind === 'recap' ? recaplib.mentionsOnlyOtherKeys(ownKeys, picked.text) : [];
+  // 저널 끝보다 새것이 아닌 요약은 아래 3)에서 숨긴다 — 숨길 요약에 대한 경고도 내지 않는다.
+  const tail = ctxlib.journalTail(dir);
+  const hideSummary = !!tail && !(picked.date && picked.date > tail.date);
+  const otherKeys = picked.kind === 'recap' && !hideSummary ? recaplib.mentionsOnlyOtherKeys(ownKeys, picked.text) : [];
   if (otherKeys.length) {
     out += `⚠ 아래 📍 요약은 ${otherKeys.join(', ')}만 언급한다 — 이 태스크(${taskKey})와 다른 작업일 수 있다. 할 일은 plan.md 기준.\n`;
   }
@@ -1085,6 +1088,12 @@ function renderResumeSlim(task, index, dir, opts = {}) {
   }
   if (otherKeys.length || pending > 0) out += '\n';
 
+  // 0) 저널 끝: 실제로 마지막에 끝난 작업. 아래 plan·요약은 이걸 다시 요약한 것이라
+  //    같은 날 안에서 순서를 모르고 끝낸 일을 "다음"으로 되살린다 (ctxlib.journalTail 주석).
+  if (tail) {
+    out += `🧾 저널 끝 (${tail.date} · ${tail.heading}) — 실제로 마지막에 끝난 작업. 다음 할 일은 여기서 잇는다\n${tail.text}\n\n`;
+  }
+
   // 1) 할 일 정본: plan.md 미완료 첫 항목. plan.md가 저널보다 낡았으면 항목 자체가
   //    의심스러우니 내지 않는다 (plan-check 안내는 brief/브리핑 몫).
   if (!planlib.planStaleInfo(dir)) {
@@ -1092,7 +1101,7 @@ function renderResumeSlim(task, index, dir, opts = {}) {
     const top = extractPlanUnresolvedTop(planRaw, 1);
     if (top.length > 0) {
       const planNext = top[0].replace(/^\s*- \[ \]\s*/, '').replace(/^★\d*\s*/, '').trim();
-      if (planNext) out += `▶ 다음 (plan.md · 할 일 정본): ${planNext}\n\n`;
+      if (planNext) out += `▶ 다음 (plan.md 첫 미완료 — 저널 끝과 다르면 저널이 맞다): ${planNext}\n\n`;
     }
   }
 
@@ -1100,11 +1109,19 @@ function renderResumeSlim(task, index, dir, opts = {}) {
   const blocked = ctxlib.blockers(contextRaw);
   if (blocked) out += `🚧 ${blocked.text}\n\n`;
 
+  // 3) 지난 대화 요약 — 참고용. 저널 끝보다 새것이 아니면 내지 않는다: 저널을 다시
+  //    요약한 2차본이라 같은 날이면 끝낸 일을 "다음"으로 되살린다 (2026-10-07 WP-11327).
+  if (hideSummary) {
+    out += opts.peek
+      ? `(slim · peek: 이 세션은 태스크에 묶이지 않음 · 요약·결정: --view=brief · 전체: --view=full)\n`
+      : `(slim · 요약·결정: --view=brief · 전체: --view=full)\n`;
+    return out;
+  }
   // 3) 지난 대화 요약 — 참고용. 출처·기준일·세션 라벨이 없으면 자동 요약이 확정 사실처럼 읽힌다.
   const sid = picked.kind === 'recap' ? recaplib.recapSessionFromSpec(specRaw) : null;
   const meta = [picked.date, sid ? '세션 ' + sid : null].filter(Boolean).join(' · ');
   const label = picked.kind === 'recap'
-    ? `📍 지난 대화 참고 (대화 기준${meta ? ' · ' + meta : ''}) — 할 일과 다르면 plan.md가 맞다`
+    ? `📍 지난 대화 참고 (대화 기준${meta ? ' · ' + meta : ''}) — 저널 끝과 다르면 저널이 맞다`
     : picked.kind === 'manual'
       ? `🧭 지금 상태 (context.md${picked.date ? ' · ' + picked.date : ''})`
       : `🧭 지금 상태 (자동 요약${picked.date ? ' · ' + picked.date : ''})`;

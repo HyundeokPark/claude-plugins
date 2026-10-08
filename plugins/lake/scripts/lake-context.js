@@ -161,8 +161,53 @@ function blockers(text) {
   return null;
 }
 
+/**
+ * 저널의 마지막 블록 — "실제로 어디서 끝났나"의 정본.
+ *
+ * 왜 필요한가: 브리핑·slim은 context.md 자동 구간과 📍 요약만 봤다. 둘 다 저널을
+ * 다시 요약한 2차 산출물이고, 신선도를 날짜(일 단위)로만 비교해 같은 날 쓴 요약끼리는
+ * 순서를 몰랐다. 그래서 "직전에 끝낸 일"과 "브리핑의 다음 할 일"이 어긋났다
+ * (2026-10-07 WP-11327: 저널은 "설계 완료, 다음 /test-writer"인데 브리핑은 이미 정한
+ * 정책을 "결정 필요"로 냈다). 저널은 append 순서가 곧 시간 순서라 마지막 블록이 마지막 상태다.
+ *
+ * 수동 저장만 고르지 않는다 — 수동 저장 뒤에 붙은 자동 기록이 더 최근 작업인 경우가
+ * 흔하다(10-08 WP-11327: 마지막 lake save는 10-07 저녁, 그 뒤 자동 기록 5건에 구현·E2E).
+ *
+ * @returns {{date, heading, text}|null} text는 블록의 마지막 maxBullets개 불릿.
+ */
+function journalTail(taskDir, maxBullets = 4) {
+  const fs = require('fs');
+  const path = require('path');
+  const dir = path.join(taskDir, 'journal');
+  let files;
+  try {
+    files = fs.readdirSync(dir).filter(f => /^\d{4}-\d{2}-\d{2}\.md$/.test(f)).sort();
+  } catch {
+    return null;
+  }
+  // 최신 파일이 비었거나 헤딩만 있으면 그 전날로 내려간다.
+  for (let i = files.length - 1; i >= 0; i--) {
+    let raw;
+    try { raw = fs.readFileSync(path.join(dir, files[i]), 'utf-8'); } catch { continue; }
+    const blocks = [];
+    let cur = null;
+    for (const line of raw.split('\n')) {
+      if (/^##\s/.test(line)) { cur = { heading: line.replace(/^##\s*/, '').trim(), lines: [] }; blocks.push(cur); continue; }
+      if (cur && line.trim()) cur.lines.push(line);
+    }
+    for (let b = blocks.length - 1; b >= 0; b--) {
+      const bullets = blocks[b].lines.filter(l => /^\s*[-*]\s/.test(l));
+      const body = (bullets.length ? bullets : blocks[b].lines).slice(-maxBullets);
+      if (!body.length) continue;
+      return { date: files[i].slice(0, 10), heading: blocks[b].heading, text: body.join('\n') };
+    }
+  }
+  return null;
+}
+
 module.exports = {
   AUTO_START, AUTO_END, STATE_HEADINGS, BLOCKER_HEADINGS,
   isNone, normalizeHeading, headingDate, findSection,
   autoBody, stripAuto, autoLine, autoDate, currentState, blockers,
+  journalTail,
 };

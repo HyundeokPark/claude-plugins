@@ -85,19 +85,19 @@ node ~/.claude/prd-lake/lake-cli.js <command> [args]
 
 Create or update a task folder and save spec/plan/context.
 
-1. Generate slug; auto-extract Project (git root) and Branch
-2. Check if folder exists → update (confirm) or create new
-3. AI drafts spec.md / plan.md / context.md from current session
-4. **Reconcile plan.md — 반드시 커맨드로 한다** (기억에 의존한 판단 금지):
-   `node ~/.claude/prd-lake/lake-cli.js plan-check <hash>` 를 실행하고, 출력된 **후보마다**
-   `체크 [x] / 대기 [~] / 폐기 [-] / 유지 [ ]` 중 하나를 판정해 plan.md에 반영한다.
-   `[~]`엔 `(until: YYYY-MM-DD)`, `[-]`엔 `(폐기 YYYY-MM-DD) 사유`를 붙인다.
-   폐기 항목은 **삭제하지 않는다**. 배경·어휘 상세 → `references/advanced.md`
-5. AskUserQuestion: "Saving with this content. Anything to change?"
-   — **plan 상태 변경 diff 필수 포함** (무엇을 `[x]`/`[~]`/`[-]`로 바꿨는지 항목별로).
-6. Write files; run `lake-cli.js upsert` to update index.json
-7. Append to `journal/{today}.md`
-8. AskUserQuestion: "Any artifacts to record? (path or skip)"
+**묻지 말고 저장한다** (과거 "저장할까요?" ~95%가 "이대로 저장"). 질문은 맨 아래 '물어도 되는 경우'만.
+
+1. Generate slug; auto-extract Project (git root) and Branch. Folder exists → update, else create (확인 질문 없음)
+2. AI drafts spec.md / plan.md / context.md from current session
+3. **Reconcile plan.md — 반드시 커맨드로** (기억 의존 금지): `node ~/.claude/prd-lake/lake-cli.js plan-check <hash>`,
+   **후보마다** `체크 [x] / 대기 [~] / 폐기 [-] / 유지 [ ]` 판정해 반영. `[~]`엔 `(until: YYYY-MM-DD)`,
+   `[-]`엔 `(폐기 YYYY-MM-DD) 사유`. 폐기 항목은 **삭제하지 않는다**. 상세 → `references/advanced.md`
+4. Write files; `lake-cli.js upsert`; append `journal/{today}.md` — **묻지 않는다.**
+5. 산출물: 이번 세션에서 만들거나 고친 파일·링크(문서·PR·스크립트·컨플/지라 URL)를 **전부 `artifacts/INDEX.md`에 기록**(없으면 건너뜀). **묻지 않는다.**
+6. 최종 답변에 보고: 태스크 id, **plan 상태 변경 diff**(항목별 `[x]`/`[~]`/`[-]`), 기록한 산출물. 고치라 하면 그때 고친다.
+
+**물어도 되는 경우 (AskUserQuestion, 이것만):** ① 저장 대상이 갈릴 때 — 새 태스크 vs 기존 태스크에 합치기/연결을 세션 맥락으로 못 정할 때
+② 사용자 말 없이 `[-]` 폐기로 판정해야 하는 항목이 있을 때 ③ 산출물 후보에 폐기 초안과 정본이 섞여 어느 쪽인지 모를 때
 
 > **"어디서 끝났나"의 정본은 저널 마지막 블록(🧾 저널 끝)이다.** 다음 할 일은 거기서 잇는다. plan.md는 할 일 목록,
 > context.md `<!-- lake:auto-context -->`·📍는 저널을 다시 요약한 것 — 저널 끝과 다르면 저널이 이긴다(끝난 일을 다음으로 내지 말 것).
